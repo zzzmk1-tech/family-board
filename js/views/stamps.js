@@ -1,8 +1,11 @@
-// 도장판 (아이 화면): 엄마가 확인한 미션 1개 = 도장 1개. 갖고 싶은 것을 적고, 도장을 모으면 "사 주세요"
-// 엄마·아빠 화면은 미션 확인 → 도장판 탭 (approve.js가 아래 함수들을 같이 써요)
+// 도장판: 엄마가 확인한 미션 1개 = 도장 1개. 갖고 싶은 것을 적고, 목표를 골라 도장을 모으면 "사 주세요"
+//  - 아이: 내 도장, 목표, 갖고 싶은 것
+//  - 엄마·아빠: 아이별 도장, 도장 개수 정하기, 사 줬어요, 도장 더하기·빼기
+// 홈 화면(home.js)도 아래 goalCardHtml / kidsSummaryHtml 를 같이 써요
 import { call, peek } from '../api.js';
-import { state } from '../state.js';
-import { esc, modal, armed, toast, fail, parseDay } from '../ui.js';
+import { state, emit, personById } from '../state.js';
+import { esc, modal, armed, toast, fail, parseDay, avatar } from '../ui.js';
+import { icon } from '../icons.js';
 
 const won = (n) => Math.round(n).toLocaleString('ko-KR') + '원';
 export const STATUS_TEXT = { '대기': '엄마·아빠가 도장 개수를 정하는 중', '확인': '', '요청': '사 달라고 했어요 ⏳', '받음': '받았어요 🎉' };
@@ -55,11 +58,53 @@ export function wishForm({ wish, kidId, rate, parent, onSaved }) {
   };
 }
 
+/** 목표 카드 (도장판, 아이 홈). d: stamps.view 결과. home: 홈에 짧게 보여줄 때 */
+export function goalCardHtml(d, home) {
+  const g = d.wishes.find((w) => w.goal) || null;
+  if (!g) {
+    const msg = d.wishes.length ? '갖고 싶은 것 중 하나를 <b>목표로</b> 골라 보세요! 🎯' : '갖고 싶은 것을 적고 목표로 골라 보세요! 🎁';
+    return `<section class="panel goal-card"><div class="head"><h2>★ 도장 ${d.balance}개</h2>${home ? '<button class="ghost small" data-go="stamps">도장판 ›</button>' : ''}</div>
+      <p class="sub">${msg}</p></section>`;
+  }
+  const need = g.stamps || 0;
+  const have = d.available + (g.status === '요청' ? need : 0);   // 사 달라고 한 건 이미 모은 거예요
+  const left = Math.max(0, need - have);
+  let action = '';
+  if (g.status === '대기') action = `<p class="hint">엄마·아빠가 도장 개수를 정하는 중이에요${need ? ` (예상 ${need}개)` : ''}.</p>`;
+  else if (g.status === '요청') action = `<p class="hint">엄마·아빠에게 사 달라고 했어요 ⏳</p>${home ? '' : `<button class="ghost small" data-cancel="${esc(g.id)}">사 달라는 거 취소</button>`}`;
+  else if (left === 0) action = home ? '<button class="primary big-btn" data-go="stamps">🎁 다 모았어요! 사 달라고 하러 가기</button>' : `<button class="primary big-btn" data-req="${esc(g.id)}">🎁 사 주세요!</button>`;
+  else action = `<p class="goal-left">도장 <b class="num">${left}</b>개 더 모으면 받아요! 💪</p>`;
+  return `<section class="panel goal-card"><div class="head"><h2>🎯 ${esc(g.title)}</h2>
+      <span class="sub">${!home && g.price ? won(g.price) + ' · ' : ''}${need && g.status !== '대기' ? `도장 ${Math.min(have, need)} / ${need}` : `도장 ${d.balance}개`}</span></div>
+    ${g.status !== '대기' ? boardHtml(have, need) : ''}
+    ${!home && g.note ? `<p class="sub">${esc(g.note)}</p>` : ''}${!home && g.link ? `<a class="sub" href="${esc(g.link)}" target="_blank" rel="noopener">링크 보기 ↗</a>` : ''}
+    ${action}
+    ${home ? '<div class="row end"><button class="ghost small" data-go="stamps">도장판 ›</button></div>'
+      : `<div class="row end">${g.status !== '요청' ? `<button class="small ghost" data-edit="${esc(g.id)}">고치기</button><button class="small ghost" data-del="${esc(g.id)}">지우기</button>` : ''}</div>`}</section>`;
+}
+
+/** 엄마·아빠 홈: 아이들 도장 한눈에. d: stamps.parent 결과 */
+export function kidsSummaryHtml(d) {
+  return `<section class="panel"><div class="head"><h2>아이들 도장</h2><button class="ghost small" data-go="stamps">도장판 ›</button></div>
+    <div class="list">${d.kids.map((k) => {
+      const g = k.wishes.find((w) => w.goal);
+      const req = k.wishes.filter((w) => w.status === '요청').length, wait = k.wishes.filter((w) => w.status === '대기').length;
+      const have = g ? Math.min(k.available + (g.status === '요청' ? g.stamps : 0), g.stamps || 0) : 0;
+      const pct = g && g.stamps && g.status !== '대기' ? Math.round((have / g.stamps) * 100) : 0;
+      return `<button class="item kidstamp" data-go="stamps">${avatar(personById(k.kidId), 32)}
+        <span class="grow"><b>${esc(k.name)}</b> <span class="sub">★ ${k.balance}개</span>
+          <br><span class="sub">${g ? `🎯 ${esc(g.title)}${g.status !== '대기' && g.stamps ? ` ${have}/${g.stamps}` : ''}` : '목표 없음'}</span>
+          ${g && g.status !== '대기' && g.stamps ? `<span class="bar stamp-bar mini"><i style="width:${pct}%"></i></span>` : ''}</span>
+        ${req ? '<span class="btag">사 달래요! 🎁</span>' : ''}${wait ? `<span class="btag warn">개수 정하기 ${wait}</span>` : ''}</button>`;
+    }).join('')}</div></section>`;
+}
+
 export default {
   id: 'stamps', label: '도장판', icon: 'star', needsPerson: true,
-  visible: (s) => (s.me ? s.me.role === '아이' : !!s.device && s.device.kind === '공용'),
+  visible: (s) => (s.me ? true : !!s.device && s.device.kind === '공용'),
+  badge: (s) => (s.me && s.me.role === '부모' ? s.wishPending || 0 : 0),
   mount(root) {
-    if (state.me.role !== '아이') { root.innerHTML = '<div class="empty big">도장판은 아이 화면이에요. 엄마·아빠는 "미션 확인 → 도장판"을 써 주세요.</div>'; return null; }
+    if (state.me.role !== '아이') return mountParent(root);
     let d = null;
 
     function draw() {
@@ -71,7 +116,7 @@ export default {
           <div class="stamp-count"><span class="big-star" aria-hidden="true">★</span><b class="num">${d.balance}</b><span>개</span></div>
           <div class="sub">${d.today ? `오늘 도장 +${d.today}개! ` : ''}엄마가 확인한 미션 1개 = 도장 1개${d.available < d.balance ? ` · 사 달라고 한 것 ${d.balance - d.available}개 빼고 ${d.available}개 쓸 수 있어요` : ''}</div>
         </section>
-        ${goal ? goalHtml(goal) : `<section class="panel"><div class="empty">갖고 싶은 것을 적고 도장을 모아 보세요! 🎁</div></section>`}
+        ${goalCardHtml(d, false)}
         <section class="panel"><div class="head"><h2>갖고 싶은 것</h2></div>
           <div class="list">${others.map(wishRowHtml).join('') || (goal ? '<div class="sub">더 갖고 싶은 게 있으면 적어 두세요.</div>' : '')}</div>
           <button class="add-btn" id="wAdd">+ 갖고 싶은 것 적기</button></section>
@@ -79,23 +124,6 @@ export default {
           <div class="stampdays">${d.days.map((x) => { const dt = parseDay(x.date); return `<div class="sday${x.count ? ' on' : ''}"><span class="sub">${dt.getMonth() + 1}/${dt.getDate()}<br>${DOWS[dt.getDay()]}</span><b class="num">${x.count ? '★' + x.count : '·'}</b></div>`; }).join('')}</div></section>
         ${d.done.length ? `<section class="panel"><div class="head"><h2>받은 것</h2></div><div class="list">${d.done.map((w) => `<div class="item"><span class="grow">🎁 <b>${esc(w.title)}</b><br><span class="sub">${esc(w.doneAt.slice(0, 10))} · 도장 ${w.stamps}개</span></span></div>`).join('')}</div></section>` : ''}
       </div>`;
-    }
-
-    function goalHtml(g) {
-      const need = g.stamps || 0;
-      const have = d.available + (g.status === '요청' ? need : 0);   // 사 달라고 한 건 이미 모은 거예요
-      const left = Math.max(0, need - have);
-      let action = '';
-      if (g.status === '대기') action = `<p class="hint">엄마·아빠가 도장 개수를 정하는 중이에요${need ? ` (예상 ${need}개)` : ''}.</p>`;
-      else if (g.status === '요청') action = `<p class="hint">엄마·아빠에게 사 달라고 했어요 ⏳</p><button class="ghost small" data-cancel="${esc(g.id)}">사 달라는 거 취소</button>`;
-      else if (left === 0) action = `<button class="primary big-btn" data-req="${esc(g.id)}">🎁 사 주세요!</button>`;
-      else action = `<p class="goal-left">도장 <b class="num">${left}</b>개 더 모으면 받아요! 💪</p>`;
-      return `<section class="panel goal-card"><div class="head"><h2>🎯 ${esc(g.title)}</h2>
-          <span class="sub">${g.price ? won(g.price) + ' · ' : ''}${need && g.status !== '대기' ? `도장 ${Math.min(have, need)} / ${need}` : ''}</span></div>
-        ${g.status !== '대기' ? boardHtml(have, need) : ''}
-        ${g.note ? `<p class="sub">${esc(g.note)}</p>` : ''}${g.link ? `<a class="sub" href="${esc(g.link)}" target="_blank" rel="noopener">링크 보기 ↗</a>` : ''}
-        ${action}
-        <div class="row end">${g.status !== '요청' ? `<button class="small ghost" data-edit="${esc(g.id)}">고치기</button><button class="small ghost" data-del="${esc(g.id)}">지우기</button>` : ''}</div></section>`;
     }
 
     function wishRowHtml(w) {
@@ -121,6 +149,94 @@ export default {
     d = peek('stamps.view');   // 지난번에 본 화면을 먼저
     if (d) draw(); else root.innerHTML = '<div class="sub">불러오는 중…</div>';
     load().catch(fail);
-    return { onSync: () => { if (!document.querySelector('.modal-bg')) load().catch(() => {}); } };
+    const kidId = state.me.id;
+    return { onSync: () => { if (state.me && state.me.id === kidId && !document.querySelector('.modal-bg')) load().catch(() => {}); } };
   },
 };
+
+/* ---------- 엄마·아빠 도장판 ---------- */
+function mountParent(root) {
+  let d = peek('stamps.parent');
+  const ST = { '대기': '도장 개수를 정해 주세요', '확인': '', '요청': '사 달래요! 🎁', '받음': '' };
+  const setPending = (x) => {
+    state.wishPending = x.kids.reduce((n, k) => n + k.wishes.filter((w) => w.status === '대기' || w.status === '요청').length, 0);
+    emit('top');
+  };
+
+  function draw() {
+    root.innerHTML = `<div class="view-body">${d.kids.map((k) => {
+      const goal = k.wishes.find((w) => w.goal);
+      const have = goal ? k.available + (goal.status === '요청' ? goal.stamps : 0) : 0;
+      return `<section class="panel">
+        <div class="head"><div class="row">${avatar(personById(k.kidId), 36)}<h2>${esc(k.name)}</h2>
+            <span class="chip">★ ${k.balance}개${k.available < k.balance ? ` (쓸 수 있는 ${k.available})` : ''}</span></div>
+          <div class="row"><button class="small nowrap" data-wadd="${esc(k.kidId)}">${icon('plus', 14)} 대신 적기</button>
+            <button class="small ghost nowrap" data-sadj="${esc(k.kidId)}">도장 더하기·빼기</button></div></div>
+        ${goal && goal.status !== '대기' && goal.stamps ? `<p class="sub">🎯 목표 <b>${esc(goal.title)}</b> ${Math.min(have, goal.stamps)} / ${goal.stamps}</p>${boardHtml(have, goal.stamps)}`
+          : `<p class="sub">${goal ? `🎯 목표 <b>${esc(goal.title)}</b> · 도장 개수를 정해 주세요` : '아직 목표를 고르지 않았어요.'}</p>`}
+        <div class="list">${k.wishes.length ? k.wishes.map((w) => `<div class="item wish${w.status === '대기' || w.status === '요청' ? ' needs' : ''}">
+            <div class="grow"><b>${w.goal ? '🎯 ' : ''}${esc(w.title)}</b>
+              <br><span class="sub">${w.price ? `${w.price.toLocaleString()}원 · ` : ''}${w.status === '대기' ? `예상 도장 ${w.stamps || '?'}개` : `도장 ${w.stamps}개`}${w.note ? ' · ' + esc(w.note) : ''}</span>
+              ${ST[w.status] ? `<br><span class="btag${w.status === '요청' ? '' : ' warn'}">${ST[w.status]}</span>` : ''}
+              ${w.link ? ` <a class="sub" href="${esc(w.link)}" target="_blank" rel="noopener">링크 ↗</a>` : ''}</div>
+            ${w.status === '대기' ? `<button class="primary small" data-wset="${esc(w.id)}">개수 정하기</button>` : ''}
+            ${w.status === '요청' || (w.status === '확인' && k.available >= w.stamps) ? `<button class="primary small" data-wdone="${esc(w.id)}">사 줬어요</button>` : ''}
+            ${w.status === '요청' ? `<button class="small ghost" data-wcancel="${esc(w.id)}">요청 취소</button>` : `<button class="small ghost" data-wedit="${esc(w.id)}">고치기</button>`}
+          </div>`).join('') : '<div class="empty">아직 적은 게 없어요.</div>'}</div>
+        ${k.done.length ? `<details class="guide"><summary>받은 것 ${k.done.length}개</summary><div class="list">${k.done.map((w) => `<div class="item"><span class="grow">🎁 ${esc(w.title)}</span><span class="sub">${esc(w.doneAt.slice(0, 10))} · ${w.stamps}개</span></div>`).join('')}</div></details>` : ''}
+        ${k.log.length ? `<details class="guide"><summary>도장 기록</summary><div class="list">${k.log.map((l) => `<div class="item"><span class="sub num">${esc(l.at.slice(5, 16))}</span>
+            <span class="grow">${esc(l.reason)}</span><b class="num">${l.delta > 0 ? '+' : ''}${l.delta}</b></div>`).join('')}</div></details>` : ''}
+      </section>`;
+    }).join('')}
+      <section class="panel"><div class="head"><h2>도장 규칙</h2></div>
+        <ul class="rules"><li>엄마·아빠가 확인한 미션 1개 = 도장 1개 (${esc(d.start.slice(5).replace('-', '/'))}부터)</li>
+          <li>"놀기 전에 끝냈어요" 같은 보너스는 그날 기본 미션을 다 했을 때만</li>
+          <li>아이가 갖고 싶은 것을 적으면 도장 개수를 정해 주세요. 아이가 목표로 골라 도장을 다 모으면 "사 주세요"를 눌러요</li></ul>
+        <form class="inline" id="rateForm"><label for="rateIn" class="nowrap">도장 1개 =</label><input id="rateIn" inputmode="numeric" value="${d.rate}" style="width:7em"><span>원</span><button class="small">저장</button></form>
+        <p class="sub">도장 1개 값은 새로 적는 것의 도장 개수를 짐작할 때만 써요. 이미 정한 개수는 그대로예요.</p></section></div>`;
+  }
+
+  const after = (x, msg) => { d = x; setPending(x); draw(); if (msg) toast(msg); };
+  const findWish = (id) => d.kids.flatMap((k) => k.wishes).find((w) => w.id === id);
+  function adjust(kidId) {
+    const kid = personById(kidId);
+    const md = modal(`${kid ? kid.name : ''} 도장 더하기·빼기`, `<form class="stack" id="adjForm">
+      <label for="adjN">몇 개? <span class="sub">(빼려면 -3처럼)</span></label><input id="adjN" inputmode="numeric" required placeholder="예: 2 또는 -1">
+      <label for="adjR">이유</label><input id="adjR" maxlength="40" placeholder="예: 동생을 잘 도와줘서">
+      <button class="primary">저장</button></form>`);
+    md.el.querySelector('#adjForm').onsubmit = async (e) => {
+      e.preventDefault();
+      try { const x = await call('stamps.adjust', kidId, Number(md.el.querySelector('#adjN').value), md.el.querySelector('#adjR').value); md.close(); after(x, '저장했어요'); } catch (err) { fail(err); }
+    };
+  }
+
+  root.addEventListener('click', async (e) => {
+    const t = e.target;
+    const wa = t.closest('[data-wadd]'); if (wa) return wishForm({ kidId: wa.dataset.wadd, rate: d.rate, parent: true, onSaved: (x) => after(x) });
+    const ws = t.closest('[data-wset],[data-wedit]');
+    if (ws) { const w = findWish(ws.dataset.wset || ws.dataset.wedit); return wishForm({ wish: w, kidId: w.kidId, rate: d.rate, parent: true, onSaved: (x) => after(x) }); }
+    const wd = t.closest('[data-wdone]');
+    if (wd) {
+      const w = findWish(wd.dataset.wdone);
+      if (!armed(wd, `도장 ${w.stamps}개 빼요. 사 줬어요?`)) return;
+      try { after(await call('wish.done', w.id), '도장을 뺐어요. 선물 고마워요! 🎁'); } catch (err) { fail(err); }
+      return;
+    }
+    const wc = t.closest('[data-wcancel]');
+    if (wc) { if (!armed(wc, '요청을 취소할까요?')) return; try { after(await call('wish.cancel', wc.dataset.wcancel), '취소했어요'); } catch (err) { fail(err); } return; }
+    const sa = t.closest('[data-sadj]'); if (sa) adjust(sa.dataset.sadj);
+  });
+  root.addEventListener('submit', async (e) => {
+    if (e.target.id !== 'rateForm') return;
+    e.preventDefault();
+    try { after(await call('stamps.setRate', Number(root.querySelector('#rateIn').value)), '저장했어요'); } catch (err) { fail(err); }
+  });
+
+  const load = () => call('stamps.parent').then((x) => { d = x; setPending(x); draw(); });
+  if (d) draw(); else root.innerHTML = '<div class="sub">불러오는 중…</div>';
+  load().catch(fail);
+  return { onSync: () => {
+    if (!state.me || state.me.role !== '부모') return;
+    if (!document.querySelector('.modal-bg') && !root.querySelector('[data-armed="1"]')) load().catch(() => {});
+  } };
+}

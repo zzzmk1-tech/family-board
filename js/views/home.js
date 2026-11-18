@@ -1,5 +1,6 @@
 // 🏠 홈: 가족 상태판, 내 상태 바꾸기, 오늘 일정
-import { call } from '../api.js';
+import { call, peek } from '../api.js';
+import { goalCardHtml, kidsSummaryHtml } from './stamps.js';
 import { state, emit, unreadTotal } from '../state.js';
 import { esc, avatar, ago, fail, toast, dayKey } from '../ui.js';
 import { eventsCache, eventsOn, evRow } from '../events.js';
@@ -15,6 +16,7 @@ export default {
     const me = state.me;
     root.innerHTML = `
       ${heroHtml({ person: me || { emoji: '🏡' }, hello: me ? `안녕, ${me.name}!` : '안녕하세요!', title: state.settings.familyName || '우리 가족', when: koDate(dayKey()) })}
+      <div id="stampBox"></div>
       <section class="panel"><div class="head"><h2>가족 상태</h2></div><div class="magnets" id="magnets"></div></section>
       <div class="grid2">
         <section class="panel" id="myStatus"></section>
@@ -71,12 +73,23 @@ export default {
       try { state.me = await save(); patchMe(); draw(); } catch (err) { state.me = prev; patchMe(); draw(); fail(err); }
     }
 
+    // 도장: 아이는 내 목표와 도장, 엄마·아빠는 아이들 도장 (지난번 내용을 먼저 보여주고 새로 받아요)
+    const stampFn = !me ? null : me.role === '아이' ? 'stamps.view' : 'stamps.parent';
+    const drawStamps = (d) => {
+      const box = root.querySelector('#stampBox');
+      if (box && d) box.innerHTML = me.role === '아이' ? goalCardHtml(d, true) : kidsSummaryHtml(d);
+    };
+    // 공용 기기에서 사람이 바뀌는 중이면 예전 사람 것은 부르지 않아요
+    const loadStamps = () => (stampFn && state.me && state.me.id === me.id ? call(stampFn).then(drawStamps).catch(() => {}) : null);
+    if (stampFn) drawStamps(peek(stampFn));
+
     draw();
     drawToday();
     call('events.list').then((l) => { eventsCache.set(l); drawToday(); }).catch(fail);
+    loadStamps();
 
     return {
-      onSync: () => { draw(); call('events.list').then((l) => { eventsCache.set(l); drawToday(); }).catch(() => {}); },
+      onSync: () => { draw(); call('events.list').then((l) => { eventsCache.set(l); drawToday(); }).catch(() => {}); loadStamps(); },
     };
   },
 };

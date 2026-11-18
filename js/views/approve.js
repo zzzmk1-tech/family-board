@@ -1,10 +1,10 @@
-// 미션 확인 (엄마·아빠 화면): 오늘 확인, 이번 주, 미션 설정, 칭찬모아 지급
+// 미션 확인 (엄마·아빠 화면): 오늘 확인, 이번 주, 칭찬모아 지급, 미션 설정
+// (도장판은 별도 메뉴예요: views/stamps.js)
 import { call, peek } from '../api.js';
 import { state, emit, personById } from '../state.js';
 import { esc, avatar, modal, armed, toast, fail, dayKey, addDays, koDate } from '../ui.js';
 import { icon } from '../icons.js';
 import { KIND_LABEL } from './missions.js';
-import { boardHtml, wishForm } from './stamps.js';
 
 const DAYS = ['', '월', '화', '수', '목', '금', '토', '일'];
 
@@ -13,20 +13,17 @@ export default {
   visible: (s) => !!s.me && s.me.role === '부모',
   badge: (s) => s.missionPending || 0,
   mount(root) {
-    let tab = 'check', parent = null, week = null, weekOffset = 0, defs = null, pays = null, stampsD = null;
+    let tab = 'check', parent = null, week = null, weekOffset = 0, defs = null, pays = null;
 
     root.innerHTML = `<div class="seg" role="tablist" id="tabs">
-        <button role="tab" data-tab="check">확인</button><button role="tab" data-tab="stamps">도장판<span class="badge" id="wishBadge" hidden></span></button>
-        <button role="tab" data-tab="week">이번 주</button>
-        <button role="tab" data-tab="defs">설정</button><button role="tab" data-tab="pay">칭찬모아</button></div>
+        <button role="tab" data-tab="check">확인</button><button role="tab" data-tab="week">이번 주</button>
+        <button role="tab" data-tab="pay">칭찬모아</button><button role="tab" data-tab="defs">설정</button></div>
       <div id="body" class="view-body"><div class="sub">불러오는 중…</div></div>`;
     const body = root.querySelector('#body');
 
     const setParent = (p) => {
       parent = p;
-      state.missionPending = p.kids.reduce((n, k) => n + k.pending, 0) + (p.wishPending || 0);
-      const wb = root.querySelector('#wishBadge');
-      if (wb) { wb.hidden = !p.wishPending; wb.textContent = p.wishPending || ''; }
+      state.missionPending = p.kids.reduce((n, k) => n + k.pending, 0);
       emit('top');
     };
 
@@ -35,57 +32,8 @@ export default {
       if (tab === 'check') return parent ? drawCheck() : load();
       if (tab === 'week') return week ? drawWeek() : loadWeek();
       if (tab === 'defs') return defs ? drawDefs() : loadDefs();
-      if (tab === 'stamps') return loadStamps();
       return pays ? drawPay() : loadPay();
     }
-    const loadStamps = () => { if (!stampsD) stampsD = peek('stamps.parent'); if (stampsD) drawStamps(); else loading(); return call('stamps.parent').then((d) => { stampsD = d; if (tab === 'stamps') drawStamps(); }).catch(fail); };
-    // 도장판 탭에서 무언가 바꾸면: 화면 다시 그리고, 확인 대기 수도 새로
-    const afterStamps = (d, msg) => { stampsD = d; drawStamps(); if (msg) toast(msg); call('missions.parent').then(setParent).catch(() => {}); };
-
-    /* ---------- 도장판 ---------- */
-    function drawStamps() {
-      const d = stampsD;
-      const ST = { '대기': '도장 개수를 정해 주세요', '확인': '', '요청': '사 달래요! 🎁', '받음': '' };
-      body.innerHTML = d.kids.map((k) => {
-        const goal = k.wishes.find((w) => w.goal);
-        return `<section class="panel">
-          <div class="head"><div class="row">${avatar(personById(k.kidId), 36)}<h2>${esc(k.name)}</h2>
-              <span class="chip">★ ${k.balance}개${k.available < k.balance ? ` (쓸 수 있는 ${k.available})` : ''}</span></div>
-            <div class="row"><button class="small nowrap" data-wadd="${esc(k.kidId)}">${icon('plus', 14)} 대신 적기</button>
-              <button class="small ghost nowrap" data-sadj="${esc(k.kidId)}">도장 더하기·빼기</button></div></div>
-          ${goal && goal.status !== '대기' && goal.stamps ? `<p class="sub">🎯 목표 <b>${esc(goal.title)}</b> ${Math.min(k.available + (goal.status === '요청' ? goal.stamps : 0), goal.stamps)} / ${goal.stamps}</p>${boardHtml(k.available + (goal.status === '요청' ? goal.stamps : 0), goal.stamps)}` : ''}
-          <div class="list">${k.wishes.length ? k.wishes.map((w) => `<div class="item wish${w.status === '대기' || w.status === '요청' ? ' needs' : ''}">
-              <div class="grow"><b>${w.goal ? '🎯 ' : ''}${esc(w.title)}</b>
-                <br><span class="sub">${w.price ? `${w.price.toLocaleString()}원 · ` : ''}${w.status === '대기' ? `예상 도장 ${w.stamps || '?'}개` : `도장 ${w.stamps}개`}${w.note ? ' · ' + esc(w.note) : ''}</span>
-                ${ST[w.status] ? `<br><span class="btag${w.status === '요청' ? '' : ' warn'}">${ST[w.status]}</span>` : ''}
-                ${w.link ? ` <a class="sub" href="${esc(w.link)}" target="_blank" rel="noopener">링크 ↗</a>` : ''}</div>
-              ${w.status === '대기' ? `<button class="primary small" data-wset="${esc(w.id)}">개수 정하기</button>` : ''}
-              ${w.status === '요청' || (w.status === '확인' && k.available >= w.stamps) ? `<button class="primary small" data-wdone="${esc(w.id)}">사 줬어요</button>` : ''}
-              ${w.status === '요청' ? `<button class="small ghost" data-wcancel="${esc(w.id)}">요청 취소</button>` : `<button class="small ghost" data-wedit="${esc(w.id)}">고치기</button>`}
-            </div>`).join('') : '<div class="empty">아직 적은 게 없어요.</div>'}</div>
-          ${k.log.length ? `<details class="guide"><summary>도장 기록</summary><div class="list">${k.log.map((l) => `<div class="item"><span class="sub num">${esc(l.at.slice(5, 16))}</span>
-              <span class="grow">${esc(l.reason)}</span><b class="num">${l.delta > 0 ? '+' : ''}${l.delta}</b></div>`).join('')}</div></details>` : ''}
-        </section>`;
-      }).join('') + `<section class="panel"><div class="head"><h2>도장 규칙</h2></div>
-          <ul class="rules"><li>엄마·아빠가 확인한 미션 1개 = 도장 1개 (${esc(d.start.slice(5).replace('-', '/'))}부터)</li>
-            <li>"놀기 전에 끝냈어요" 같은 보너스는 그날 기본 미션을 다 했을 때만</li>
-            <li>아이가 갖고 싶은 것을 적으면 도장 개수를 정해 주세요. 도장을 다 모으면 아이가 "사 주세요"를 눌러요</li></ul>
-          <form class="inline" id="rateForm"><label for="rateIn" class="nowrap">도장 1개 =</label><input id="rateIn" inputmode="numeric" value="${d.rate}" style="width:7em"><span>원</span><button class="small">저장</button></form>
-          <p class="sub">도장 1개 값은 새로 적는 것의 도장 개수를 짐작할 때만 써요. 이미 정한 개수는 그대로예요.</p></section>`;
-    }
-
-    function stampAdjust(kidId) {
-      const kid = personById(kidId);
-      const md = modal(`${kid ? kid.name : ''} 도장 더하기·빼기`, `<form class="stack" id="adjForm">
-        <label for="adjN">몇 개? <span class="sub">(빼려면 -3처럼)</span></label><input id="adjN" inputmode="numeric" required placeholder="예: 2 또는 -1">
-        <label for="adjR">이유</label><input id="adjR" maxlength="40" placeholder="예: 동생을 잘 도와줘서">
-        <button class="primary">저장</button></form>`);
-      md.el.querySelector('#adjForm').onsubmit = async (e) => {
-        e.preventDefault();
-        try { const d = await call('stamps.adjust', kidId, Number(md.el.querySelector('#adjN').value), md.el.querySelector('#adjR').value); md.close(); afterStamps(d, '저장했어요'); } catch (err) { fail(err); }
-      };
-    }
-    const findWish = (id) => stampsD.kids.flatMap((k) => k.wishes).find((w) => w.id === id);
     const loading = () => { body.innerHTML = '<div class="sub">불러오는 중…</div>'; };
     // 지난번에 본 화면이 있으면 먼저 보여주고 새 내용을 받아 바꿔요
     const load = () => {
@@ -239,9 +187,7 @@ export default {
           ${kids.map((k) => `<div class="grid2"><label>${esc(k.name)} 칭찬모아 이름<input data-cmname="${esc(k.id)}" value="${esc(k.cmName)}" maxlength="20"></label>
             <label>학급<input data-cmclass="${esc(k.id)}" value="${esc(k.cmClass)}" maxlength="20" placeholder="예: 초3"></label></div>`).join('')}
           <div class="row end"><button class="primary">저장</button></div></form>
-        ${defs.payoutUrl ? `<div class="stack"><span class="label">칭찬모아 자동 지급 스크립트(Firefox)에 넣을 주소</span>
-          <div class="copy"><input readonly id="payUrl" value="${esc(defs.payoutUrl)}" aria-label="지급 주소"><button type="button" id="copyUrl">복사</button></div>
-          <p class="sub">예전 미션 앱 주소 대신 이 주소를 넣으면 새 보드의 포인트로 지급돼요. 비밀번호가 들어 있으니 다른 사람에게 보내지 마세요.</p></div>` : ''}
+        <p class="sub">칭찬모아 Firefox 자동 지급과 엄마 비밀번호는 <b>칭찬모아</b> 탭에 있어요.</p>
       </section>`;
     }
 
@@ -281,35 +227,33 @@ export default {
 
     /* ---------- 칭찬모아 ---------- */
     function drawPay() {
-      body.innerHTML = `<section class="panel"><div class="head"><h2>미지급 포인트</h2></div>
-          <p class="sub">아이가 받았지만 아직 칭찬모아에 넣어 주지 않은 포인트예요. 칭찬모아에서 포인트를 준 뒤 "줬어요"를 누르면 여기서 빠져요. Firefox 자동 지급 스크립트를 쓰면 저절로 기록돼요.</p>
+      body.innerHTML = `<section class="panel"><div class="head"><h2>미지급 포인트</h2>
+            <a class="button primary small nowrap" href="${esc(pays.openUrl)}" target="_blank" rel="noopener">칭찬모아 열기 ↗</a></div>
+          <p class="sub">아이가 받았지만 아직 칭찬모아에 넣어 주지 않은 포인트예요. 칭찬모아에서 포인트를 준 뒤 "줬어요"를 누르면 여기서 빠져요.
+            Firefox 자동 지급 스크립트를 쓰면 저절로 기록돼요.</p>
           <div class="list">${pays.kids.map((k) => `<div class="item">${avatar(personById(k.kidId), 36)}
             <div class="grow"><b>${esc(k.name)}</b><br><span class="sub">${esc(k.memo)}</span></div>
             <b class="num big-num">${k.unpaid.toLocaleString()}</b>
             ${k.unpaid ? `<button class="primary small" data-paid="${esc(k.kidId)}" data-amount="${k.unpaid}" data-memo="${esc(k.memo)}">줬어요</button>` : ''}</div>`).join('')}</div></section>
         <section class="panel"><div class="head"><h2>지급 기록</h2></div>
           <div class="list">${pays.history.length ? pays.history.map((h) => `<div class="item"><span class="sub num">${esc(h.at.slice(5, 16))}</span>
-            <span class="grow">${esc(personById(h.kidId)?.name || h.kidId)} · ${esc(h.memo)}</span><b class="num">${h.amount.toLocaleString()}</b></div>`).join('') : '<div class="empty">아직 지급 기록이 없어요.</div>'}</div></section>`;
+            <span class="grow">${esc(personById(h.kidId)?.name || h.kidId)} · ${esc(h.memo)}${/^자동/.test(h.by) ? ' <span class="btag">자동</span>' : ''}</span><b class="num">${h.amount.toLocaleString()}</b></div>`).join('') : '<div class="empty">아직 지급 기록이 없어요.</div>'}</div></section>
+        <section class="panel"><div class="head"><h2>Firefox 자동 지급</h2></div>
+          <ol class="rules">
+            <li>PC에서 가족 보드를 <b>Firefox</b>로 열어 두면, 위의 <b>칭찬모아 열기</b>가 같은 Firefox에서 열려요.</li>
+            <li>칭찬모아에 로그인하면 스크립트가 <b>포인트 지급하기</b> 화면으로 데려가요. (칭찬모아 주소의 버전 번호가 바뀌어도 메뉴를 찾아가요)</li>
+            <li>화면 왼쪽 아래 <b>미션 포인트 가져오기</b>를 누르면 아이별로 지급하고 여기에 기록해요.</li>
+            <li>처음 한 번(또는 가족 보드로 바꾼 뒤 처음) <b>엄마 비밀번호</b>를 물어봐요. 아래 값을 붙여 넣어 주세요.</li></ol>
+          <span class="label">엄마 비밀번호 <span class="sub">(다른 사람에게 알려 주지 마세요)</span></span>
+          <div class="copy"><input readonly id="payKey" value="${esc(pays.payoutKey)}" aria-label="엄마 비밀번호"><button type="button" data-copy="payKey">복사</button></div>
+          <p class="sub">스크립트가 아직 없으면 Firefox에 Tampermonkey(또는 Violentmonkey)를 설치하고
+            <a href="${esc(pays.scriptUrl)}" target="_blank" rel="noopener">칭찬모아 미션 포인트 지급 스크립트</a>를 열어 설치해 주세요. 새 버전이 나오면 저절로 업데이트돼요.</p></section>`;
     }
 
     /* ---------- 클릭 ---------- */
     root.querySelector('#tabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; draw(); } };
     body.addEventListener('click', async (e) => {
       const t = e.target;
-      // 도장판 탭
-      const wa = t.closest('[data-wadd]'); if (wa) return wishForm({ kidId: wa.dataset.wadd, rate: stampsD.rate, parent: true, onSaved: (d) => afterStamps(d) });
-      const ws = t.closest('[data-wset],[data-wedit]');
-      if (ws) { const w = findWish(ws.dataset.wset || ws.dataset.wedit); return wishForm({ wish: w, kidId: w.kidId, rate: stampsD.rate, parent: true, onSaved: (d) => afterStamps(d) }); }
-      const wd = t.closest('[data-wdone]');
-      if (wd) {
-        const w = findWish(wd.dataset.wdone);
-        if (!armed(wd, `도장 ${w.stamps}개 빼요. 사 줬어요?`)) return;
-        try { afterStamps(await call('wish.done', w.id), '도장을 뺐어요. 선물 고마워요! 🎁'); } catch (err) { fail(err); }
-        return;
-      }
-      const wc = t.closest('[data-wcancel]');
-      if (wc) { if (!armed(wc, '요청을 취소할까요?')) return; try { afterStamps(await call('wish.cancel', wc.dataset.wcancel), '취소했어요'); } catch (err) { fail(err); } return; }
-      const sa = t.closest('[data-sadj]'); if (sa) return stampAdjust(sa.dataset.sadj);
       const ab = t.closest('[data-act]');
       if (ab) {
         if (ab.dataset.act === 'reject' && !armed(ab, '정말 취소할까요?')) return;
@@ -331,9 +275,10 @@ export default {
       if (wk) { weekOffset = wk.dataset.wk === '0' ? 0 : weekOffset + Number(wk.dataset.wk); loadWeek(); return; }
       const nd = t.closest('[data-newdef]'); if (nd) return defModal({ kidId: nd.dataset.newdef, dows: [1, 2, 3, 4, 5] });
       const ed = t.closest('[data-def]'); if (ed) return defModal(defs.defs.find((x) => x.id === ed.dataset.def));
-      if (t.closest('#copyUrl')) {
-        const inp = root.querySelector('#payUrl');
-        try { await navigator.clipboard.writeText(inp.value); toast('복사했어요'); } catch (err) { inp.select(); toast('주소를 길게 눌러 복사해 주세요'); }
+      const cp = t.closest('[data-copy]');
+      if (cp) {
+        const inp = root.querySelector('#' + cp.dataset.copy);
+        try { await navigator.clipboard.writeText(inp.value); toast('복사했어요'); } catch (err) { inp.select(); toast('길게 눌러 복사해 주세요'); }
         return;
       }
       const pd = t.closest('[data-paid]');
@@ -343,11 +288,6 @@ export default {
       }
     });
     body.addEventListener('submit', async (e) => {
-      if (e.target.id === 'rateForm') {
-        e.preventDefault();
-        try { afterStamps(await call('stamps.setRate', Number(body.querySelector('#rateIn').value)), '저장했어요'); } catch (err) { fail(err); }
-        return;
-      }
       if (e.target.id !== 'msForm') return;
       e.preventDefault();
       const f = e.target;
@@ -363,7 +303,6 @@ export default {
     draw();
     return { onSync: () => {
       if (!state.me || state.me.role !== '부모') return;   // 공용 기기에서 아이로 바뀌는 중
-      if (tab === 'stamps' && !document.querySelector('.modal-bg') && !root.querySelector('[data-armed="1"]')) call('stamps.parent').then((d) => { stampsD = d; if (tab === 'stamps') drawStamps(); }).catch(() => {});
       if (tab === 'check' && !saving) call('missions.parent').then((p) => { if (saving) return; setParent(p); if (tab === 'check' && !root.querySelector('[data-armed="1"]')) drawCheck(); }).catch(() => {}); } };
   },
 };

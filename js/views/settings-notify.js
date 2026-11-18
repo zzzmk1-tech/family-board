@@ -2,7 +2,7 @@
 import { call } from '../api.js';
 import { state } from '../state.js';
 import { esc, avatar, toast, fail } from '../ui.js';
-import { pushSupport, permission, enablePush, disablePush } from '../push.js';
+import { pushSupport, permission, enablePush, disablePush, refreshPush, markPushOn } from '../push.js';
 
 /** 사람 역할에 따라 보여줄 알림 항목 */
 function items(me) {
@@ -22,7 +22,7 @@ export function mountNotify(el) {
   let st = null, busy = false;
 
   async function load() {
-    try { st = await call('push.state'); draw(); } catch (e) { el.innerHTML = `<div class="sub">${esc(e.message)}</div>`; }
+    try { st = await call('push.state'); if (st.deviceOn) markPushOn(true); draw(); } catch (e) { el.innerHTML = `<div class="sub">${esc(e.message)}</div>`; }
   }
 
   function draw() {
@@ -61,7 +61,20 @@ export function mountNotify(el) {
       busy = false; return;
     }
     if (t.closest('#pOff')) { try { st = await disablePush(); draw(); toast('이 기기의 알림을 껐어요'); } catch (err) { fail(err); } return; }
-    if (t.closest('#pTest')) { try { await call('push.test'); toast('시험 알림을 보냈어요. 잠시 뒤 알림창을 봐 주세요'); } catch (err) { fail(err); } return; }
+    if (t.closest('#pTest')) {
+      try { await call('push.test'); toast('시험 알림을 보냈어요. 잠시 뒤 알림창을 봐 주세요'); } catch (err) {
+        if (err.code !== 'push_gone') { fail(err); return; }
+        // 알림 주소가 바뀌었어요(앱으로 설치 등): 새 주소로 다시 등록하고 한 번 더 보내요
+        try {
+          markPushOn(true);
+          await refreshPush(true);
+          await call('push.test');
+          st = await call('push.state'); draw();
+          toast('알림 주소를 새로 등록하고 시험 알림을 보냈어요');
+        } catch (e2) { fail(new Error('알림을 끄고 다시 켜 주세요. (' + (e2.message || '') + ')')); load(); }
+      }
+      return;
+    }
     if (t.closest('#qSave')) {
       const from = el.querySelector('#qFrom').value, to = el.querySelector('#qTo').value;
       if (!!from !== !!to) { toast('시작과 끝을 모두 골라 주세요'); return; }

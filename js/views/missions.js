@@ -164,6 +164,7 @@ export default {
     const last = peek('missions.today');
     if (last) { data = { ...last, celebrate: [] }; draw(); }
     load().catch(fail);
-    return { onSync: () => { if (!busy) { month = null; load().catch(() => {}); } } };
+    const kidId = state.me.id;
+    return { onSync: () => { if (!busy && state.me && state.me.id === kidId) { month = null; load().catch(() => {}); } } };
   },
 };
