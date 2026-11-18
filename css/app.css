@@ -181,7 +181,17 @@ form.inline { display: flex; gap: 8px; }
 form.inline input { flex: 1; }
 
 /* 홈 */
-.magnets { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+/* 가족 상태: 한 줄에 두 명 (아빠·엄마 / 소율·우재) */
+.magnets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.magnet .who-line b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 520px) {
+  .magnets { gap: 8px; }
+  .magnet { padding: 10px; gap: 4px; }
+  .magnet .note { font-size: 12px; }
+}
+.nowrap { white-space: nowrap; flex-shrink: 0; }
+/* 아이콘 + 글자 버튼은 한 줄로 (예: "+ 지난 미션 넣기") */
+button.nowrap:has(> .i) { display: inline-flex; align-items: center; gap: 4px; }
 .magnet { border-radius: 12px; padding: 12px; display: grid; gap: 6px; background: var(--surface2); }
 .who-line { display: flex; align-items: center; gap: 10px; font-size: 16px; }
 .who-line b { font-weight: 600; }
