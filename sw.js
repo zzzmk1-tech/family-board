@@ -3,7 +3,7 @@
 // 2) Firebase 알림을 받아서 알림창에 보여주고, 누르면 그 메뉴를 열어요
 //
 // 화면 파일을 고치면 아래 VERSION 숫자를 올려 주세요. 그래야 새 파일로 바뀌어요.
-const VERSION = 'fb-1.0.3';
+const VERSION = 'fb-1.0.4';
 const FILES = [
   './', 'index.html', 'manifest.json', 'css/app.css', 'icons/icon.svg',
   'js/api.js', 'js/app.js', 'js/config.js', 'js/events.js', 'js/icons.js', 'js/import.js', 'js/menu.js', 'js/photo.js', 'js/push.js',
