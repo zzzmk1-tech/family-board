@@ -25,7 +25,7 @@ export default {
 
     const draw = () => {
       root.querySelector('#magnets').innerHTML = state.people.map((p) => `
-        <div class="magnet"><div class="who-line">${avatar(p, 40)}<b>${esc(p.name)}</b></div>
+        <div class="magnet"><div class="who-line">${avatar(p, matchMedia('(max-width:520px)').matches ? 32 : 40)}<b>${esc(p.name)}</b></div>
           ${p.status ? `<span class="chip st-${esc(p.status)}">${STATUS_ICON[p.status] || ''} ${esc(p.status)}</span>` : '<span class="chip">상태 없음</span>'}
           ${p.statusNote ? `<div class="note">“${esc(p.statusNote)}”</div>` : ''}
           <div class="note">${esc(ago(p.statusAt))}</div></div>`).join('');

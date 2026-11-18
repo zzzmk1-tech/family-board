@@ -5,7 +5,7 @@ import { esc, avatar, modal, armed, toast, fail, dayKey, parseDay, koDate, DOW }
 import { eventsCache, eventsOn, evColor, evRow } from '../events.js';
 
 export default {
-  id: 'calendar', label: '달력', icon: '📅',
+  id: 'calendar', label: '달력', icon: 'calendar',
   mount(root) {
     const now = new Date();
     let y = now.getFullYear(), m = now.getMonth(), sel = dayKey();
@@ -69,16 +69,24 @@ export default {
         <label for="evDate">날짜</label><input type="date" id="evDate" required value="${esc(ev.date || dayKey())}">
         <div class="row"><label for="evTime" class="grow">시작 <input type="time" id="evTime" value="${esc(ev.time || '')}"></label>
           <label for="evEnd" class="grow">끝 <input type="time" id="evEnd" value="${esc(ev.end || '')}"></label></div>
-        <label for="evRepeat">반복</label><select id="evRepeat"><option value="없음">한 번</option><option value="매주" ${ev.repeat === '매주' ? 'selected' : ''}>매주 (학원처럼)</option></select>
+        <label for="evRepeat">반복</label><select id="evRepeat"><option value="없음">한 번</option>
+          <option value="매주" ${ev.repeat === '매주' ? 'selected' : ''}>매주 (학원처럼)</option>
+          <option value="매년" ${ev.repeat === '매년' ? 'selected' : ''}>매년 (생일·기념일)</option></select>
+        <p class="sub" id="evYearNote" ${ev.repeat === '매년' ? '' : 'hidden'}>위 날짜의 월·일에 해마다 보여요. 생일은 태어난 해 날짜로 넣어도 돼요.</p>
         <div id="evDaysBox" class="stack" ${ev.repeat === '매주' ? '' : 'hidden'}>
           <div class="chips">${[...DOW].map((d, i) => `<label class="chk"><input type="checkbox" value="${i}" ${(ev.days || []).includes(i) ? 'checked' : ''}>${d}</label>`).join('')}</div>
-          <label for="evUntil">언제까지 <span class="sub">(비우면 계속)</span></label><input type="date" id="evUntil" value="${esc(ev.until || '')}">
+          <label for="evUntil">언제까지 <span class="sub">(비우면 계속)</span></label>
+          <div class="row"><input type="date" id="evUntil" class="grow" value="${esc(ev.until || '')}"><button type="button" class="small ghost nowrap" id="evUntilClear">지우기</button></div>
         </div>
         <label for="evMemo">메모 <span class="sub">(선택)</span></label><input id="evMemo" maxlength="200" value="${esc(ev.memo || '')}" placeholder="예: 물병 챙기기">
         <div class="row end">${isNew ? '' : '<button type="button" class="danger" id="evDel">지우기</button>'}<button class="primary">${isNew ? '추가' : '저장'}</button></div>
       </form>`);
       const f = md.el;
-      f.querySelector('#evRepeat').onchange = (e) => { f.querySelector('#evDaysBox').hidden = e.target.value !== '매주'; };
+      f.querySelector('#evRepeat').onchange = (e) => {
+        f.querySelector('#evDaysBox').hidden = e.target.value !== '매주';
+        f.querySelector('#evYearNote').hidden = e.target.value !== '매년';
+      };
+      f.querySelector('#evUntilClear').onclick = () => { f.querySelector('#evUntil').value = ''; };
       f.querySelector('#evForm').onsubmit = async (e) => {
         e.preventDefault();
         const val = (id) => f.querySelector(id).value;
@@ -91,13 +99,16 @@ export default {
         try {
           const saved = await call('events.save', data);
           eventsCache.set(list().filter((x) => x.id !== saved.id).concat(saved));
-          sel = saved.date; const d = parseDay(sel); y = d.getFullYear(); m = d.getMonth();
+          sel = saved.date;
+          // 생일처럼 예전 날짜로 넣은 매년 일정은 올해 그날로 보여줘요
+          if (saved.repeat === '매년' && sel < dayKey()) sel = `${new Date().getFullYear()}${sel.slice(4)}`;
+          const d = parseDay(sel); y = d.getFullYear(); m = d.getMonth();
           md.close(); draw(); toast(isNew ? '일정을 추가했어요' : '저장했어요');
         } catch (err) { fail(err); }
       };
       const del = f.querySelector('#evDel');
       if (del) del.onclick = async () => {
-        if (!armed(del, ev.repeat === '매주' ? '매주 일정 전부 지울까요?' : '정말 지울까요?')) return;
+        if (!armed(del, ev.repeat === '매주' ? '매주 일정 전부 지울까요?' : ev.repeat === '매년' ? '해마다 나오는 일정을 지울까요?' : '정말 지울까요?')) return;
         try { await call('events.remove', ev.id); eventsCache.set(list().filter((x) => x.id !== ev.id)); md.close(); draw(); toast('지웠어요'); } catch (err) { fail(err); }
       };
     }

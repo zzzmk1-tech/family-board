@@ -45,11 +45,11 @@ export default {
         <div class="head"><div class="row">${avatar(personById(k.kidId), 36)}<h2>${esc(k.name)}</h2>
             ${k.pending ? `<span class="chip warnchip">확인 대기 ${k.pending}</span>` : ''}</div>
           <div class="row">${k.pending ? `<button class="primary small" data-allok="${esc(k.kidId)}">모두 확인</button>` : ''}
-            <button class="small" data-past="${esc(k.kidId)}">${icon('plus', 14)} 지난 미션 넣기</button></div></div>
+            <button class="small nowrap" data-past="${esc(k.kidId)}">${icon('plus', 14)} 지난 미션 넣기</button></div></div>
         <div class="stats">
           <div class="stat"><span class="sub">오늘</span><b class="num">+${k.todayPoints.toLocaleString()}</b></div>
           <div class="stat"><span class="sub">이번 달</span><b class="num">${k.monthPoints.toLocaleString()}</b></div>
-          <div class="stat"><span class="sub">칭찬모아 줄 포인트</span><b class="num">${k.unpaid.toLocaleString()}</b></div>
+          <div class="stat"><span class="sub">미지급 포인트</span><b class="num">${k.unpaid.toLocaleString()}</b></div>
         </div>
         <div class="missions">${k.items.length ? k.items.map((m) => rowHtml(k.kidId, parent.date, m)).join('') : '<div class="empty">오늘은 미션이 없어요.</div>'}</div>
         ${k.past.length ? `<h3>지난 날 확인 안 한 미션</h3><div class="missions">${k.past.map((m) => rowHtml(k.kidId, m.date, { ...m, state: 'pending', kind: '' }, m.dateLabel)).join('')}</div>` : ''}
@@ -184,8 +184,8 @@ export default {
 
     /* ---------- 칭찬모아 ---------- */
     function drawPay() {
-      body.innerHTML = `<section class="panel"><div class="head"><h2>칭찬모아로 줄 포인트</h2></div>
-          <p class="sub">칭찬모아에서 포인트를 준 뒤 "줬어요"를 누르면 여기서 빠져요. Firefox 자동 지급 스크립트를 쓰면 저절로 기록돼요.</p>
+      body.innerHTML = `<section class="panel"><div class="head"><h2>미지급 포인트</h2></div>
+          <p class="sub">아이가 받았지만 아직 칭찬모아에 넣어 주지 않은 포인트예요. 칭찬모아에서 포인트를 준 뒤 "줬어요"를 누르면 여기서 빠져요. Firefox 자동 지급 스크립트를 쓰면 저절로 기록돼요.</p>
           <div class="list">${pays.kids.map((k) => `<div class="item">${avatar(personById(k.kidId), 36)}
             <div class="grow"><b>${esc(k.name)}</b><br><span class="sub">${esc(k.memo)}</span></div>
             <b class="num big-num">${k.unpaid.toLocaleString()}</b>
