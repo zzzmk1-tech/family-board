@@ -190,6 +190,19 @@ form.inline input { flex: 1; }
   .magnet .note { font-size: 12px; }
 }
 .nowrap { white-space: nowrap; flex-shrink: 0; }
+/* 누른 버튼: 서버 답을 기다리는 동안 돌아가는 표시 */
+button.busy, label.busy { position: relative; pointer-events: none; }
+button.busy::after { content: ''; position: absolute; right: 6px; top: 50%; width: 12px; height: 12px; margin-top: -6px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; opacity: .8; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* 화면 맨 위 얇은 막대: 저장·불러오는 중 */
+#netbar { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 9999; pointer-events: none; opacity: 0; transition: opacity .2s;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 50% 100%; background-repeat: no-repeat; }
+#netbar.on { opacity: 1; animation: netbar 1s linear infinite; }
+@keyframes netbar { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+/* 바로 반영했지만 아직 저장 중인 것 */
+.saving { opacity: .75; }
+@media (prefers-reduced-motion: reduce) { button.busy::after, #netbar.on { animation: none; } }
 /* 도장판 */
 .big-star { color: var(--accent); font-size: 28px; line-height: 1; }
 .stamp-hero { text-align: center; display: grid; gap: 4px; justify-items: center; }
