@@ -190,6 +190,13 @@ form.inline input { flex: 1; }
   .magnet .note { font-size: 12px; }
 }
 .nowrap { white-space: nowrap; flex-shrink: 0; }
+/* 이용내역 가져오기 */
+.imp-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.imp-row.off { opacity: .45; }
+.imp-row input[type=checkbox] { width: 20px; height: 20px; flex: none; }
+.imp-row select { margin-top: 4px; padding: 2px 6px; font-size: 13px; width: auto; max-width: 100%; }
+.small-table { font-size: 12px; }
+.small-table th, .small-table td { padding: 4px 6px; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
 /* 아이콘 + 글자 버튼은 한 줄로 (예: "+ 지난 미션 넣기") */
 button.nowrap:has(> .i) { display: inline-flex; align-items: center; gap: 4px; }
 .magnet { border-radius: 12px; padding: 12px; display: grid; gap: 6px; background: var(--surface2); }
