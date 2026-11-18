@@ -4,6 +4,7 @@ import { state, emit, personById } from '../state.js';
 import { esc, avatar, modal, armed, toast, fail, dayKey, addDays, koDate } from '../ui.js';
 import { icon } from '../icons.js';
 import { KIND_LABEL } from './missions.js';
+import { boardHtml, wishForm } from './stamps.js';
 
 const DAYS = ['', '월', '화', '수', '목', '금', '토', '일'];
 
@@ -12,17 +13,20 @@ export default {
   visible: (s) => !!s.me && s.me.role === '부모',
   badge: (s) => s.missionPending || 0,
   mount(root) {
-    let tab = 'check', parent = null, week = null, weekOffset = 0, defs = null, pays = null;
+    let tab = 'check', parent = null, week = null, weekOffset = 0, defs = null, pays = null, stampsD = null;
 
     root.innerHTML = `<div class="seg" role="tablist" id="tabs">
-        <button role="tab" data-tab="check">확인</button><button role="tab" data-tab="week">이번 주</button>
-        <button role="tab" data-tab="defs">미션 설정</button><button role="tab" data-tab="pay">칭찬모아</button></div>
+        <button role="tab" data-tab="check">확인</button><button role="tab" data-tab="stamps">도장판<span class="badge" id="wishBadge" hidden></span></button>
+        <button role="tab" data-tab="week">이번 주</button>
+        <button role="tab" data-tab="defs">설정</button><button role="tab" data-tab="pay">칭찬모아</button></div>
       <div id="body" class="view-body"><div class="sub">불러오는 중…</div></div>`;
     const body = root.querySelector('#body');
 
     const setParent = (p) => {
       parent = p;
-      state.missionPending = p.kids.reduce((n, k) => n + k.pending, 0);
+      state.missionPending = p.kids.reduce((n, k) => n + k.pending, 0) + (p.wishPending || 0);
+      const wb = root.querySelector('#wishBadge');
+      if (wb) { wb.hidden = !p.wishPending; wb.textContent = p.wishPending || ''; }
       emit('top');
     };
 
@@ -31,8 +35,57 @@ export default {
       if (tab === 'check') return parent ? drawCheck() : load();
       if (tab === 'week') return week ? drawWeek() : loadWeek();
       if (tab === 'defs') return defs ? drawDefs() : loadDefs();
+      if (tab === 'stamps') return loadStamps();
       return pays ? drawPay() : loadPay();
     }
+    const loadStamps = () => { if (!stampsD) loading(); return call('stamps.parent').then((d) => { stampsD = d; if (tab === 'stamps') drawStamps(); }).catch(fail); };
+    // 도장판 탭에서 무언가 바꾸면: 화면 다시 그리고, 확인 대기 수도 새로
+    const afterStamps = (d, msg) => { stampsD = d; drawStamps(); if (msg) toast(msg); call('missions.parent').then(setParent).catch(() => {}); };
+
+    /* ---------- 도장판 ---------- */
+    function drawStamps() {
+      const d = stampsD;
+      const ST = { '대기': '도장 개수를 정해 주세요', '확인': '', '요청': '사 달래요! 🎁', '받음': '' };
+      body.innerHTML = d.kids.map((k) => {
+        const goal = k.wishes.find((w) => w.goal);
+        return `<section class="panel">
+          <div class="head"><div class="row">${avatar(personById(k.kidId), 36)}<h2>${esc(k.name)}</h2>
+              <span class="chip">★ ${k.balance}개${k.available < k.balance ? ` (쓸 수 있는 ${k.available})` : ''}</span></div>
+            <div class="row"><button class="small nowrap" data-wadd="${esc(k.kidId)}">${icon('plus', 14)} 대신 적기</button>
+              <button class="small ghost nowrap" data-sadj="${esc(k.kidId)}">도장 더하기·빼기</button></div></div>
+          ${goal && goal.status !== '대기' && goal.stamps ? `<p class="sub">🎯 목표 <b>${esc(goal.title)}</b> ${Math.min(k.available + (goal.status === '요청' ? goal.stamps : 0), goal.stamps)} / ${goal.stamps}</p>${boardHtml(k.available + (goal.status === '요청' ? goal.stamps : 0), goal.stamps)}` : ''}
+          <div class="list">${k.wishes.length ? k.wishes.map((w) => `<div class="item wish${w.status === '대기' || w.status === '요청' ? ' needs' : ''}">
+              <div class="grow"><b>${w.goal ? '🎯 ' : ''}${esc(w.title)}</b>
+                <br><span class="sub">${w.price ? `${w.price.toLocaleString()}원 · ` : ''}${w.status === '대기' ? `예상 도장 ${w.stamps || '?'}개` : `도장 ${w.stamps}개`}${w.note ? ' · ' + esc(w.note) : ''}</span>
+                ${ST[w.status] ? `<br><span class="btag${w.status === '요청' ? '' : ' warn'}">${ST[w.status]}</span>` : ''}
+                ${w.link ? ` <a class="sub" href="${esc(w.link)}" target="_blank" rel="noopener">링크 ↗</a>` : ''}</div>
+              ${w.status === '대기' ? `<button class="primary small" data-wset="${esc(w.id)}">개수 정하기</button>` : ''}
+              ${w.status === '요청' || (w.status === '확인' && k.available >= w.stamps) ? `<button class="primary small" data-wdone="${esc(w.id)}">사 줬어요</button>` : ''}
+              ${w.status === '요청' ? `<button class="small ghost" data-wcancel="${esc(w.id)}">요청 취소</button>` : `<button class="small ghost" data-wedit="${esc(w.id)}">고치기</button>`}
+            </div>`).join('') : '<div class="empty">아직 적은 게 없어요.</div>'}</div>
+          ${k.log.length ? `<details class="guide"><summary>도장 기록</summary><div class="list">${k.log.map((l) => `<div class="item"><span class="sub num">${esc(l.at.slice(5, 16))}</span>
+              <span class="grow">${esc(l.reason)}</span><b class="num">${l.delta > 0 ? '+' : ''}${l.delta}</b></div>`).join('')}</div></details>` : ''}
+        </section>`;
+      }).join('') + `<section class="panel"><div class="head"><h2>도장 규칙</h2></div>
+          <ul class="rules"><li>엄마·아빠가 확인한 미션 1개 = 도장 1개 (${esc(d.start.slice(5).replace('-', '/'))}부터)</li>
+            <li>"놀기 전에 끝냈어요" 같은 보너스는 그날 기본 미션을 다 했을 때만</li>
+            <li>아이가 갖고 싶은 것을 적으면 도장 개수를 정해 주세요. 도장을 다 모으면 아이가 "사 주세요"를 눌러요</li></ul>
+          <form class="inline" id="rateForm"><label for="rateIn" class="nowrap">도장 1개 =</label><input id="rateIn" inputmode="numeric" value="${d.rate}" style="width:7em"><span>원</span><button class="small">저장</button></form>
+          <p class="sub">도장 1개 값은 새로 적는 것의 도장 개수를 짐작할 때만 써요. 이미 정한 개수는 그대로예요.</p></section>`;
+    }
+
+    function stampAdjust(kidId) {
+      const kid = personById(kidId);
+      const md = modal(`${kid ? kid.name : ''} 도장 더하기·빼기`, `<form class="stack" id="adjForm">
+        <label for="adjN">몇 개? <span class="sub">(빼려면 -3처럼)</span></label><input id="adjN" inputmode="numeric" required placeholder="예: 2 또는 -1">
+        <label for="adjR">이유</label><input id="adjR" maxlength="40" placeholder="예: 동생을 잘 도와줘서">
+        <button class="primary">저장</button></form>`);
+      md.el.querySelector('#adjForm').onsubmit = async (e) => {
+        e.preventDefault();
+        try { const d = await call('stamps.adjust', kidId, Number(md.el.querySelector('#adjN').value), md.el.querySelector('#adjR').value); md.close(); afterStamps(d, '저장했어요'); } catch (err) { fail(err); }
+      };
+    }
+    const findWish = (id) => stampsD.kids.flatMap((k) => k.wishes).find((w) => w.id === id);
     const loading = () => { body.innerHTML = '<div class="sub">불러오는 중…</div>'; };
     const load = () => { loading(); return call('missions.parent').then((p) => { setParent(p); if (tab === 'check') drawCheck(); }).catch(fail); };
     const loadWeek = () => { loading(); return call('missions.week', weekOffset).then((w) => { week = w; if (tab === 'week') drawWeek(); }).catch(fail); };
@@ -199,6 +252,20 @@ export default {
     root.querySelector('#tabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; draw(); } };
     body.addEventListener('click', async (e) => {
       const t = e.target;
+      // 도장판 탭
+      const wa = t.closest('[data-wadd]'); if (wa) return wishForm({ kidId: wa.dataset.wadd, rate: stampsD.rate, parent: true, onSaved: (d) => afterStamps(d) });
+      const ws = t.closest('[data-wset],[data-wedit]');
+      if (ws) { const w = findWish(ws.dataset.wset || ws.dataset.wedit); return wishForm({ wish: w, kidId: w.kidId, rate: stampsD.rate, parent: true, onSaved: (d) => afterStamps(d) }); }
+      const wd = t.closest('[data-wdone]');
+      if (wd) {
+        const w = findWish(wd.dataset.wdone);
+        if (!armed(wd, `도장 ${w.stamps}개 빼요. 사 줬어요?`)) return;
+        try { afterStamps(await call('wish.done', w.id), '도장을 뺐어요. 선물 고마워요! 🎁'); } catch (err) { fail(err); }
+        return;
+      }
+      const wc = t.closest('[data-wcancel]');
+      if (wc) { if (!armed(wc, '요청을 취소할까요?')) return; try { afterStamps(await call('wish.cancel', wc.dataset.wcancel), '취소했어요'); } catch (err) { fail(err); } return; }
+      const sa = t.closest('[data-sadj]'); if (sa) return stampAdjust(sa.dataset.sadj);
       const ab = t.closest('[data-act]');
       if (ab) {
         if (ab.dataset.act === 'reject' && !armed(ab, '정말 취소할까요?')) return;
@@ -232,6 +299,11 @@ export default {
       }
     });
     body.addEventListener('submit', async (e) => {
+      if (e.target.id === 'rateForm') {
+        e.preventDefault();
+        try { afterStamps(await call('stamps.setRate', Number(body.querySelector('#rateIn').value)), '저장했어요'); } catch (err) { fail(err); }
+        return;
+      }
       if (e.target.id !== 'msForm') return;
       e.preventDefault();
       const f = e.target;
@@ -245,6 +317,9 @@ export default {
     });
 
     draw();
-    return { onSync: () => { if (tab === 'check') call('missions.parent').then((p) => { setParent(p); if (tab === 'check' && !root.querySelector('[data-armed="1"]')) drawCheck(); }).catch(() => {}); } };
+    return { onSync: () => {
+      if (!state.me || state.me.role !== '부모') return;   // 공용 기기에서 아이로 바뀌는 중
+      if (tab === 'stamps' && !document.querySelector('.modal-bg') && !root.querySelector('[data-armed="1"]')) call('stamps.parent').then((d) => { stampsD = d; if (tab === 'stamps') drawStamps(); }).catch(() => {});
+      if (tab === 'check') call('missions.parent').then((p) => { setParent(p); if (tab === 'check' && !root.querySelector('[data-armed="1"]')) drawCheck(); }).catch(() => {}); } };
   },
 };

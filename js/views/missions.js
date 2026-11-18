@@ -8,6 +8,18 @@ import { missionIcon } from '../theme.js';
 
 export const KIND_LABEL = { '보너스': '선택', '완료보너스': '보너스', '주말': '토·일 중 하루' };
 
+/** 미션 화면 위의 도장 한 줄: 누르면 도장판으로 */
+function stampStripHtml(s) {
+  const g = s.goal;
+  const goalText = !g ? '갖고 싶은 것을 적어 보세요'
+    : g.status === '대기' ? `목표 ${g.title} · 엄마가 도장 개수를 정하는 중`
+    : g.status === '요청' ? `${g.title} · 사 달라고 했어요 ⏳`
+    : s.balance >= g.stamps ? `${g.title} · 다 모았어요! 사 달라고 해요 🎁`
+    : `목표 ${g.title} ${s.balance}/${g.stamps}`;
+  return `<button class="stampstrip" data-go="stamps"><span class="big-star" aria-hidden="true">★</span>
+    <span class="grow"><b>도장 ${s.balance}개</b>${s.today ? ` <span class="sub">오늘 +${s.today}</span>` : ''}<br><span class="sub">${esc(goalText)}</span></span><span aria-hidden="true">›</span></button>`;
+}
+
 /** 인사 카드 (홈에서도 써요) */
 export function heroHtml({ person, hello, title, when, progress }) {
   const mascot = person && person.photo ? `<img src="${esc(person.photo)}" alt="">` : esc((person && person.emoji) || '⭐');
@@ -38,7 +50,8 @@ export default {
       const label = !d.coreTotal ? '오늘은 쉬는 날' : done === d.coreTotal ? '기본 미션 끝! 최고야 🎉' : `기본 미션 ${done} / ${d.coreTotal}`;
       top.innerHTML = `<div class="view-body">${heroHtml({ person: state.me, hello: `안녕, ${d.name}!`, title: `${d.name}의 오늘 미션`, when: d.dateLabel, progress: { label, pct } })}
         <div class="stats"><div class="stat"><b class="num">${d.todayPoints.toLocaleString()}</b><span class="sub">오늘 받은 포인트</span></div>
-          <div class="stat"><b class="num">${d.monthPoints.toLocaleString()}</b><span class="sub">이번 달</span></div></div></div>`;
+          <div class="stat"><b class="num">${d.monthPoints.toLocaleString()}</b><span class="sub">이번 달</span></div></div>
+        ${d.stamp ? stampStripHtml(d.stamp) : ''}</div>`;
     }
 
     function draw() {
@@ -114,7 +127,7 @@ export default {
         try {
           const before = data.items.find((x) => x.id === t.dataset.toggle);
           data = await call('missions.toggle', t.dataset.toggle);
-          toast(before && before.state === 'pending' ? '체크를 취소했어요' : '잘했어요! 엄마가 확인하면 포인트가 들어가요');
+          toast(before && before.state === 'pending' ? '체크를 취소했어요' : '잘했어요! 엄마가 확인하면 포인트와 도장이 들어가요');
           draw();
         } catch (err) { fail(err); t.disabled = false; }
         busy = false;
