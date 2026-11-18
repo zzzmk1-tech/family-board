@@ -19,11 +19,12 @@ import stamps from './views/stamps.js';
 import { register, availableViews, orderedViews, BAR_COUNT } from './menu.js';
 import { icon } from './icons.js';
 import { applyTone } from './theme.js';
-import { listenPush } from './push.js';
+import { listenPush, refreshPush } from './push.js';
 
 // 기본 메뉴 순서. 사람마다 설정에서 바꿀 수 있어요.
 // (미션은 아이에게만, 미션 확인·가계부는 엄마·아빠에게만 보여요 - 각 화면 파일의 visible)
-const VIEWS = [home, missions, stamps, approve, calendar, chat, budget, wiki, settings];
+// 아이: 홈 · 미션 · 도장판 · 달력 … / 엄마·아빠: 홈 · 미션 확인 · 도장판 · 달력 …
+const VIEWS = [home, missions, approve, stamps, calendar, chat, budget, wiki, settings];
 register(VIEWS);
 const app = $('#app');
 let current = null;      // 지금 화면 { view, handle }
@@ -46,11 +47,13 @@ async function start() {
   Object.assign(state, {
     device: boot.device, me: boot.me, people: boot.people, rooms: boot.rooms || [],
     settings: boot.settings, statuses: boot.statuses, wikiCategories: boot.wikiCategories, v: boot.v,
-    missionPending: boot.missionPending || 0,
+    missionPending: boot.missionPending || 0, wishPending: boot.wishPending || 0,
   });
   renderShell();
   go(location.hash.slice(1) || 'home');
   startSync();
+  // 알림 주소가 바뀌었으면(앱으로 설치 등) 조용히 새 주소로 등록해요
+  setTimeout(() => { refreshPush().catch(() => {}); }, 3000);
 }
 
 /* ---------- 새 기기 연결 화면 ---------- */
@@ -222,6 +225,7 @@ async function syncNow() {
       if (r.people) state.people = r.people;
       if (r.rooms) state.rooms = r.rooms;
       if (r.missionPending !== undefined) state.missionPending = r.missionPending;
+      if (r.wishPending !== undefined) state.wishPending = r.wishPending;
       if (state.me) state.me = personById(state.me.id) || state.me;
       renderTop();
       renderNav();
