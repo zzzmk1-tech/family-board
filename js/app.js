@@ -15,6 +15,7 @@ import settings from './views/settings.js';
 import missions from './views/missions.js';
 import approve from './views/approve.js';
 import budget from './views/budget.js';
+import stamps from './views/stamps.js';
 import { register, availableViews, orderedViews, BAR_COUNT } from './menu.js';
 import { icon } from './icons.js';
 import { applyTone } from './theme.js';
@@ -22,7 +23,7 @@ import { listenPush } from './push.js';
 
 // 기본 메뉴 순서. 사람마다 설정에서 바꿀 수 있어요.
 // (미션은 아이에게만, 미션 확인·가계부는 엄마·아빠에게만 보여요 - 각 화면 파일의 visible)
-const VIEWS = [home, missions, approve, calendar, chat, budget, wiki, settings];
+const VIEWS = [home, missions, stamps, approve, calendar, chat, budget, wiki, settings];
 register(VIEWS);
 const app = $('#app');
 let current = null;      // 지금 화면 { view, handle }
