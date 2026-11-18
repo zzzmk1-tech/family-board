@@ -10,8 +10,15 @@ export const eventsCache = {
   set: (list) => { cache = list; },
 };
 
-/** 이 일정이 그 날짜에 있는지 (매주 반복 포함) */
+/** 이 일정이 그 날짜에 있는지 (매주·매년 반복 포함) */
 export function occurs(ev, k) {
+  if (ev.repeat === '매년') {
+    if (k < ev.date) return false;
+    const md = ev.date.slice(5);
+    // 2월 29일 기념일은 평년에는 2월 28일에 보여요
+    if (md === '02-29' && !isLeap(Number(k.slice(0, 4)))) return k.slice(5) === '02-28';
+    return k.slice(5) === md;
+  }
   if (ev.repeat === '매주') {
     if (k < ev.date) return false;
     if (ev.until && k > ev.until) return false;
@@ -28,8 +35,10 @@ export function personColor(id) {
 export const evColor = (e) => (e.people && e.people.length === 1 ? personColor(e.people[0]) : 'var(--accent)');
 export const whoText = (e) => (e.people || []).map((id) => personById(id)?.name).filter(Boolean).join(', ') || '가족 모두';
 export const timeText = (e) => (e.time ? (e.end ? `${e.time}–${e.end}` : e.time) : '하루 종일');
+const isLeap = (y) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
 export const repText = (e) => (e.repeat === '매주'
-  ? `매주 ${(e.days || []).slice().sort().map((d) => DOW[d]).join('·')}${e.until ? ` (${e.until.slice(5).replace('-', '/')}까지)` : ''}` : '');
+  ? `매주 ${(e.days || []).slice().sort().map((d) => DOW[d]).join('·')}${e.until ? ` (${e.until.slice(5).replace('-', '/')}까지)` : ''}`
+  : e.repeat === '매년' ? `매년 ${Number(e.date.slice(5, 7))}월 ${Number(e.date.slice(8))}일` : '');
 
 /** 일정 한 줄 */
 export function evRow(e, { actions = false } = {}) {
