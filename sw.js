@@ -3,9 +3,9 @@
 // 2) Firebase 알림을 받아서 알림창에 보여주고, 누르면 그 메뉴를 열어요
 //
 // 화면 파일을 고치면 아래 VERSION 숫자를 올려 주세요. 그래야 새 파일로 바뀌어요.
-const VERSION = 'fb-1.0.5';
+const VERSION = 'fb-1.1.0';
 const FILES = [
-  './', 'index.html', 'manifest.json', 'css/app.css', 'icons/icon.svg',
+  './', 'index.html', 'manifest.json', 'css/app.css', 'icons/icon.svg', 'icons/icon-192.png', 'icons/badge-96.png',
   'js/api.js', 'js/app.js', 'js/config.js', 'js/events.js', 'js/icons.js', 'js/import.js', 'js/menu.js', 'js/photo.js', 'js/push.js',
   'js/state.js', 'js/theme.js', 'js/ui.js',
   'js/views/approve.js', 'js/views/budget.js', 'js/views/calendar.js', 'js/views/chat.js', 'js/views/home.js',
@@ -39,7 +39,8 @@ self.addEventListener('push', (e) => {
   const title = d.title || '가족 보드';
   const opts = {
     body: d.body || '', tag: d.tag || undefined, renotify: !!d.tag,
-    icon: 'icons/icon.svg', badge: 'icons/icon.svg', data: { url: d.url || '#home' },
+    // 안드로이드는 SVG를 못 써서 PNG예요. badge = 상태 표시줄의 작은 흰 아이콘
+    icon: 'icons/icon-192.png', badge: 'icons/badge-96.png', data: { url: d.url || '#home' },
   };
   e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
     const visible = list.some((c) => c.visibilityState === 'visible');
