@@ -190,6 +190,11 @@ form.inline input { flex: 1; }
   .magnet .note { font-size: 12px; }
 }
 .nowrap { white-space: nowrap; flex-shrink: 0; }
+/* 버튼 모양 링크 (칭찬모아 열기 등) */
+a.button { display: inline-flex; align-items: center; gap: 4px; text-decoration: none; border-radius: 10px; padding: 8px 14px; font-weight: 600;
+  background: var(--surface2); color: var(--ink); }
+a.button.primary { background: var(--accent); color: var(--on-accent); }
+a.button.small { padding: 5px 10px; font-size: 13px; }
 /* 누른 버튼: 서버 답을 기다리는 동안 돌아가는 표시 */
 button.busy, label.busy { position: relative; pointer-events: none; }
 button.busy::after { content: ''; position: absolute; right: 6px; top: 50%; width: 12px; height: 12px; margin-top: -6px;
@@ -224,6 +229,8 @@ button.busy::after { content: ''; position: absolute; right: 6px; top: 50%; widt
 .sday.on b { color: var(--accent); }
 .item.wish { flex-wrap: wrap; }
 .item.wish.needs { outline: 2px solid var(--accent-soft); }
+.kidstamp { width: 100%; text-align: left; display: flex; align-items: center; gap: 10px; background: var(--surface2); border-radius: 12px; padding: 10px 12px; }
+.stamp-bar.mini { display: block; height: 6px; margin: 4px 0 0; }
 .stampstrip { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; margin-top: 10px; background: var(--surface); box-shadow: var(--shadow); border-radius: 16px; padding: 10px 14px; }
 @media (prefers-reduced-motion: reduce) { .stampcell.on { animation: none; } }
 /* 탭이 많을 때(미션 확인 5개) 휴대폰에서 한 줄에 들어가게 */
