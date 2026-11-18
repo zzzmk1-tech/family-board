@@ -2,6 +2,7 @@
 import { call, store } from '../api.js';
 import { state, personById } from '../state.js';
 import { esc, modal, armed, toast, fail, dayKey, parseDay } from '../ui.js';
+import { readTable, guessLayout, buildRows, guessPayment, rememberLayout, recallLayout } from '../import.js';
 
 const won = (n) => (n < 0 ? '-' : '') + Math.abs(Math.round(n)).toLocaleString('ko-KR') + '원';
 const ymLabel = (ym) => `${ym.slice(0, 4)}년 ${Number(ym.slice(5))}월`;
@@ -48,8 +49,16 @@ export default {
             <textarea id="pasteIn" rows="4" placeholder="[Web발신]&#10;KB국민카드 승인&#10;11/18 12:30&#10;12,000원 일시불&#10;스타벅스 대구점"></textarea>
             <div class="row end"><button type="button" class="small" id="pasteClip">클립보드에서 붙여넣기</button><button type="button" class="primary small" id="pasteGo">읽어서 채우기</button></div>
           </div></details>
+        <details class="guide" id="importBox">
+          <summary>📥 카드·은행 이용내역 가져오기 (엑셀)</summary>
+          <div class="stack" style="margin-top:8px">
+            <p class="sub">카드사·은행 홈페이지나 앱에서 이용내역을 엑셀(xlsx, xls, csv)로 내려받아 올리면 한꺼번에 들어가요.
+              이미 가계부에 있는 결제와 이체·충전은 빼 두니, 확인하고 가져오기를 누르세요.</p>
+            <label class="add-btn" style="text-align:center;cursor:pointer">엑셀 파일 고르기<input type="file" id="importFile" accept=".xlsx,.xls,.csv,text/csv" hidden></label>
+          </div></details>
         <section class="panel" id="addBox">${formHtml(prefill)}</section>`;
       wireForm(body.querySelector('#addBox'), null);
+      body.querySelector('#importFile').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) openImport(f); };
       const box = body.querySelector('#pasteBox');
       box.querySelector('#pasteClip').onclick = async () => {
         try { box.querySelector('#pasteIn').value = await navigator.clipboard.readText(); } catch (e) { toast('입력칸을 길게 눌러 붙여넣기 해 주세요'); }
@@ -64,6 +73,126 @@ export default {
           toast(r.category === '미분류' ? '채웠어요. 카테고리를 골라 주세요' : '채웠어요. 확인하고 저장하세요');
         } catch (err) { fail(err); }
       };
+    }
+
+    /* ---------- 이용내역 엑셀 가져오기 ---------- */
+    async function openImport(file) {
+      let table;
+      try { toast('엑셀을 읽는 중…'); table = await readTable(file); } catch (e) { fail(e); return; }
+      const auto = guessLayout(table);
+      let headerRow = auto.headerRow >= 0 ? auto.headerRow : 0;
+      const remembered = recallLayout(table[headerRow] || []);
+      let map = { ...auto.map, ...(remembered ? remembered.map : {}) };
+      let payment = (remembered && remembered.payment) || guessPayment(file.name, init.payments);
+      let rows = null, checks = null;
+      const md = modal('이용내역 가져오기', '<div id="impBody" class="stack"></div>', { wide: true });
+      const box = md.el.querySelector('#impBody');
+      const header = () => table[headerRow] || [];
+      const colOpts = (sel) => `<option value="-1">(없음)</option>` + header().map((h, i) => `<option value="${i}" ${sel === i ? 'selected' : ''}>${esc(String(h || `${i + 1}번째 칸`))}</option>`).join('');
+
+      function drawSetup() {
+        const sample = table.slice(headerRow + 1, headerRow + 4);
+        box.innerHTML = `
+          <p class="sub"><b>${esc(file.name)}</b> · ${table.length}줄${auto.headerRow < 0 ? ' · <span class="warn">칸 이름을 못 찾았어요. 아래에서 골라 주세요.</span>' : ''}</p>
+          <div class="grid2">
+            <label>칸 이름이 있는 줄<select id="impHead">${table.slice(0, 40).map((r, i) => `<option value="${i}" ${i === headerRow ? 'selected' : ''}>${i + 1}줄: ${esc(r.filter((x) => x !== '').slice(0, 4).map((x) => (x instanceof Date ? x.toLocaleDateString() : x)).join(' · ').slice(0, 40))}</option>`).join('')}</select></label>
+            <label>결제수단<input id="impPay" list="impPayList" value="${esc(payment)}" placeholder="예: KB카드, 토스, K뱅크"><datalist id="impPayList">${init.payments.map((p) => `<option value="${esc(p)}">`).join('')}</datalist></label>
+            <label>날짜 칸<select id="impDate">${colOpts(map.date)}</select></label>
+            <label>내용(가게) 칸<select id="impShop">${colOpts(map.merchant)}</select></label>
+            <label>금액 칸 <span class="sub">(카드)</span><select id="impAmt">${colOpts(map.amount)}</select></label>
+            <label>출금 칸 <span class="sub">(은행 통장이면)</span><select id="impOut">${colOpts(map.out)}</select></label>
+            <label>구분 칸 <span class="sub">(승인/취소, 입금/출금)</span><select id="impKind">${colOpts(map.kind)}</select></label>
+          </div>
+          <div class="tablewrap"><table class="btable small-table"><tr>${header().map((h) => `<th>${esc(String(h))}</th>`).join('')}</tr>
+            ${sample.map((r) => `<tr>${header().map((_, i) => `<td>${esc(String(r[i] instanceof Date ? r[i].toLocaleDateString() : r[i] ?? ''))}</td>`).join('')}</tr>`).join('')}</table></div>
+          <div class="row end"><button class="primary" id="impRead">이대로 읽기</button></div>`;
+        box.querySelector('#impHead').onchange = (e) => {
+          headerRow = Number(e.target.value);
+          const g = guessLayout([table[headerRow]]); map = { ...g.map };
+          const rem = recallLayout(header()); if (rem) { map = { ...map, ...rem.map }; payment = rem.payment || payment; }
+          drawSetup();
+        };
+        box.querySelector('#impRead').onclick = readRows;
+      }
+
+      async function readRows() {
+        const num = (id) => Number(box.querySelector(id).value);
+        map = { date: num('#impDate'), merchant: num('#impShop'), amount: num('#impAmt'), out: num('#impOut'), kind: num('#impKind'), in: -1 };
+        payment = box.querySelector('#impPay').value.trim();
+        if (map.date < 0) { toast('날짜 칸을 골라 주세요'); return; }
+        if (map.amount < 0 && map.out < 0) { toast('금액 칸이나 출금 칸을 골라 주세요'); return; }
+        if (!payment) { toast('결제수단을 적어 주세요'); return; }
+        rows = buildRows(table, { headerRow, map });
+        if (!rows.length) { toast('가져올 줄을 찾지 못했어요. 칸을 다시 골라 주세요'); return; }
+        rememberLayout(header(), map, payment);
+        box.innerHTML = '<div class="sub">가계부와 비교하는 중…</div>';
+        try {
+          checks = await call('budget.importCheck', rows.map((r) => ({ date: r.date, amount: r.amount, merchant: r.merchant })), payment);
+        } catch (e) { fail(e); drawSetup(); return; }
+        rows.forEach((r, i) => {
+          r.category = checks[i].category;
+          r.dup = checks[i].dup;
+          r.on = !r.skip && !r.dup;
+        });
+        drawRows();
+      }
+
+      function drawRows() {
+        const catOpts = (sel) => init.categories.map((c) => `<option ${c.name === sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+        const dups = rows.filter((r) => r.dup).length, skips = rows.filter((r) => r.skip && !r.dup).length;
+        box.innerHTML = `
+          <p class="sub"><span id="impSum"></span>
+            ${dups ? `이미 있는 결제 ${dups}건, ` : ''}${skips ? `이체·충전 같은 ${skips}건은 ` : ''}${dups || skips ? '빼 두었어요. 넣으려면 체크하세요.' : ''}</p>
+          <div class="row"><button class="small" id="impAll">모두 체크</button><button class="small" id="impNone">모두 해제</button><button class="small ghost" id="impBack">칸 다시 고르기</button></div>
+          <div class="txlist imp-list">${rows.map((r, i) => `<label class="tx imp-row${r.on ? '' : ' off'}">
+            <input type="checkbox" data-imp="${i}" ${r.on ? 'checked' : ''}>
+            <div class="grow"><div class="m">${esc(r.merchant)}</div>
+              <div class="c">${esc(r.date)}${r.dup ? ' <span class="btag">이미 있음</span>' : ''}${r.note ? ` <span class="btag warn">${esc(r.note)}</span>` : ''}
+              <select data-impcat="${i}" aria-label="카테고리">${catOpts(r.category)}</select></div></div>
+            <div class="a num">${won(r.amount)}</div></label>`).join('')}</div>
+          <div class="row end"><button class="primary" id="impSave"></button></div>`;
+        updateSum();
+        box.querySelector('#impBack').onclick = drawSetup;
+        box.querySelector('#impAll').onclick = () => { rows.forEach((r) => { r.on = true; }); drawRows(); };
+        box.querySelector('#impNone').onclick = () => { rows.forEach((r) => { r.on = false; }); drawRows(); };
+        box.querySelector('#impSave').onclick = save;
+      }
+      function updateSum() {
+        const on = rows.filter((r) => r.on), sum = on.reduce((a, r) => a + r.amount, 0);
+        box.querySelector('#impSum').innerHTML = `${rows.length}건 중 <b>${on.length}건 ${won(sum)}</b>을 <b>${esc(payment)}</b>(${esc(who(init.me))}) 기록으로 가져와요.`;
+        const b = box.querySelector('#impSave');
+        b.textContent = `${on.length}건 가져오기`;
+        b.disabled = !on.length;
+      }
+      box.addEventListener('change', (e) => {
+        const c = e.target.closest('[data-imp]');
+        if (c) { rows[Number(c.dataset.imp)].on = c.checked; c.closest('.imp-row').classList.toggle('off', !c.checked); updateSum(); return; }
+        const s = e.target.closest('[data-impcat]');
+        if (s) rows[Number(s.dataset.impcat)].category = s.value;
+      });
+
+      async function save() {
+        const btn = box.querySelector('#impSave');
+        btn.disabled = true;
+        const pick = rows.filter((r) => r.on).map((r) => ({ date: r.date, amount: r.amount, memo: r.merchant, category: r.category, force: r.dup }));
+        try {
+          // 처음 쓰는 결제수단이면 목록에 더해요
+          if (!init.payments.includes(payment)) {
+            const s = await call('budget.settings');
+            await call('budget.savePayments', s.payments.concat([{ name: payment, words: '' }]));
+            init = await call('budget.init');
+          }
+          const r = await call('budget.importSave', pick, payment);
+          md.close();
+          toast(`${r.added}건을 가져왔어요${r.skipped ? ` (${r.skipped}건은 이미 있어서 뺐어요)` : ''}`);
+          tab = 'list';
+          const first = pick.map((x) => x.date).sort().pop();
+          if (first) ym = first.slice(0, 7);
+          draw();
+        } catch (e) { fail(e); btn.disabled = false; }
+      }
+
+      drawSetup();
     }
 
     /* ---------- 입력 폼 (새로 쓰기·고치기 같이 써요) ---------- */
@@ -149,7 +278,7 @@ export default {
         }
         rows += `<button class="tx" data-tx="${esc(t.id)}"><div class="grow"><div class="m">${esc(t.memo || t.category)}</div>
           <div class="c">${esc(t.category)}${t.payment ? ' · ' + esc(t.payment) : ''}${t.member ? ' · ' + esc(who(t.member)) : ''}
-          ${t.source === '자동' ? '<span class="btag">자동</span>' : ''}${t.source === '고정비' ? '<span class="btag">고정비</span>' : ''}
+          ${t.source === '자동' ? '<span class="btag">자동</span>' : ''}${t.source === '고정비' ? '<span class="btag">고정비</span>' : ''}${t.source === '가져오기' ? '<span class="btag">엑셀</span>' : ''}
           ${t.category === '미분류' ? '<span class="btag warn">분류 필요</span>' : ''}</div></div><div class="a num">${won(t.amount)}</div></button>`;
       });
       body.innerHTML = `${monthBar()}
