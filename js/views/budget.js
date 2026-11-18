@@ -1,5 +1,5 @@
 // 가계부 (엄마·아빠 화면): 입력 / 내역 / 요약 / 설정 — 예전 '우리집 가계부'와 같은 기능
-import { call, store } from '../api.js';
+import { call, store, peek } from '../api.js';
 import { state, personById } from '../state.js';
 import { esc, modal, armed, toast, fail, dayKey, parseDay } from '../ui.js';
 import { readTable, guessLayout, buildRows, guessPayment, rememberLayout, recallLayout } from '../import.js';
@@ -234,10 +234,21 @@ export default {
         if (!v) { toast('금액을 입력해 주세요'); return; }
         if (!cat) { toast('카테고리를 골라 주세요'); return; }
         if (pay) store.set('fb.lastPay', pay.dataset.pay);
+        const row = { id: tx ? tx.id : '', amount: amt.value, category: cat.dataset.cat, date: box.querySelector('#fDate').value,
+          memo: box.querySelector('#fMemo').value, payment: pay ? pay.dataset.pay : '' };
+        if (!tx) {
+          // 새로 쓰기: 바로 '저장했어요'하고 빈 칸으로 돌려놓고, 저장은 뒤에서. 실패하면 적은 내용을 다시 채워요
+          toast(`${won(v)} 저장했어요`);
+          drawAdd({});
+          try { await call('budget.save', row); } catch (err) {
+            if (tab === 'add') drawAdd({ amount: row.amount, date: row.date, memo: row.memo, payment: row.payment, category: row.category });
+            fail(new Error('저장하지 못했어요. 적은 내용을 다시 채워 두었어요: ' + (err.message || '')));
+          }
+          return;
+        }
         try {
-          await call('budget.save', { id: tx ? tx.id : '', amount: amt.value, category: cat.dataset.cat, date: box.querySelector('#fDate').value,
-            memo: box.querySelector('#fMemo').value, payment: pay ? pay.dataset.pay : '' });
-          toast(tx ? '수정했어요' : `${won(v)} 저장했어요`);
+          await call('budget.save', row);
+          toast('수정했어요');
           if (onDone) onDone(); else draw();
         } catch (err) { fail(err); }
       };
@@ -250,7 +261,8 @@ export default {
 
     /* ---------- 내역 ---------- */
     async function loadList() {
-      body.innerHTML = monthBar() + '<div class="sub">불러오는 중…</div>';
+      const c = peek('budget.list', ym);
+      if (c) { list = c; drawList(); } else body.innerHTML = monthBar() + '<div class="sub">불러오는 중…</div>';
       try { list = await call('budget.list', ym); if (tab === 'list') drawList(); } catch (e) { fail(e); }
     }
     function monthBar() {
@@ -477,7 +489,9 @@ export default {
       try { afterSet(await call('budget.setOpen', e.target.checked), e.target.checked ? '내 내역을 가족에게 보여줘요' : '내 내역은 합계로만 보여요'); } catch (err) { fail(err); }
     });
 
-    call('budget.init').then((d) => { init = d; draw(); }).catch(fail);
+    // 지난번에 받은 목록(카테고리·결제수단)이 있으면 입력 칸을 바로 보여줘요
+    init = peek('budget.init');
+    call('budget.init').then((d) => { const first = !init; init = d; if (first) draw(); }).catch(fail);
     draw();
     return null;
   },

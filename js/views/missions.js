@@ -1,6 +1,6 @@
 // 미션 (아이 화면) - '오늘의 미션' 앱과 같은 모양
 // 인사 카드(마스코트·진행 막대) → 포인트 카드 → 탭(오늘 / 이번 달 / 요일별) → 미션 카드
-import { call } from '../api.js';
+import { call, peek } from '../api.js';
 import { state } from '../state.js';
 import { esc, toast, fail, DOW, parseDay } from '../ui.js';
 import { icon } from '../icons.js';
@@ -36,6 +36,7 @@ export default {
   mount(root) {
     if (state.me.role !== '아이') { root.innerHTML = '<div class="empty big">미션은 아이 화면이에요. 엄마·아빠는 "미션 확인"을 써 주세요.</div>'; return null; }
     let data = null, tab = 'today', month = null, ym = null, busy = false, cheer = [];
+    const pendingIds = new Set();   // 저장 중인 미션 체크
 
     root.innerHTML = `<div id="top"></div>
       <div class="seg" role="tablist" id="tabs">
@@ -122,15 +123,30 @@ export default {
     root.querySelector('#tabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; draw(); } };
     body.addEventListener('click', async (e) => {
       const t = e.target.closest('[data-toggle]');
-      if (t && !busy) {
-        busy = true; t.disabled = true;
+      if (t) {
+        // 누르는 순간 화면부터 바꾸고(체크 ↔ 취소), 저장은 뒤에서 해요. 실패하면 되돌려요.
+        const id = t.dataset.toggle;
+        const item = data.items.find((x) => x.id === id);
+        if (!item || pendingIds.has(id)) return;
+        const prev = JSON.parse(JSON.stringify(data));
+        const wasPending = item.state === 'pending';
+        item.state = wasPending ? 'none' : 'pending';
+        item.checkedAt = wasPending ? '' : new Date().toTimeString().slice(0, 5);
+        if (item.kind === '기본') data.corePending += wasPending ? -1 : 1;
+        pendingIds.add(id);
+        busy = true;
+        draw();
+        toast(wasPending ? '체크를 취소했어요' : '잘했어요! 엄마가 확인하면 포인트와 도장이 들어가요');
         try {
-          const before = data.items.find((x) => x.id === t.dataset.toggle);
-          data = await call('missions.toggle', t.dataset.toggle);
-          toast(before && before.state === 'pending' ? '체크를 취소했어요' : '잘했어요! 엄마가 확인하면 포인트와 도장이 들어가요');
-          draw();
-        } catch (err) { fail(err); t.disabled = false; }
-        busy = false;
+          const fresh = await call('missions.toggle', id);
+          pendingIds.delete(id);
+          if (!pendingIds.size) { data = fresh; draw(); }   // 여러 개를 빨리 눌렀으면 마지막 답으로 맞춰요
+        } catch (err) {
+          pendingIds.delete(id);
+          if (!pendingIds.size) { data = prev; draw(); }
+          fail(err);
+        }
+        busy = pendingIds.size > 0;
         return;
       }
       const m = e.target.closest('[data-ym]');
@@ -143,7 +159,10 @@ export default {
     });
 
     // 확인 소식(cheer)은 화면을 연 동안 계속 보여줘요
-    const load = () => call('missions.today').then((d) => { data = d; if (d.celebrate.length) cheer = cheer.concat(d.celebrate); draw(); });
+    const load = () => call('missions.today').then((d) => { if (busy) return; data = d; if (d.celebrate.length) cheer = cheer.concat(d.celebrate); draw(); });
+    // 지난번에 본 화면이 있으면 먼저 보여주고, 새 내용을 받아 바꿔요
+    const last = peek('missions.today');
+    if (last) { data = { ...last, celebrate: [] }; draw(); }
     load().catch(fail);
     return { onSync: () => { if (!busy) { month = null; load().catch(() => {}); } } };
   },

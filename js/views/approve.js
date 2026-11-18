@@ -1,5 +1,5 @@
 // 미션 확인 (엄마·아빠 화면): 오늘 확인, 이번 주, 미션 설정, 칭찬모아 지급
-import { call } from '../api.js';
+import { call, peek } from '../api.js';
 import { state, emit, personById } from '../state.js';
 import { esc, avatar, modal, armed, toast, fail, dayKey, addDays, koDate } from '../ui.js';
 import { icon } from '../icons.js';
@@ -38,7 +38,7 @@ export default {
       if (tab === 'stamps') return loadStamps();
       return pays ? drawPay() : loadPay();
     }
-    const loadStamps = () => { if (!stampsD) loading(); return call('stamps.parent').then((d) => { stampsD = d; if (tab === 'stamps') drawStamps(); }).catch(fail); };
+    const loadStamps = () => { if (!stampsD) stampsD = peek('stamps.parent'); if (stampsD) drawStamps(); else loading(); return call('stamps.parent').then((d) => { stampsD = d; if (tab === 'stamps') drawStamps(); }).catch(fail); };
     // 도장판 탭에서 무언가 바꾸면: 화면 다시 그리고, 확인 대기 수도 새로
     const afterStamps = (d, msg) => { stampsD = d; drawStamps(); if (msg) toast(msg); call('missions.parent').then(setParent).catch(() => {}); };
 
@@ -87,7 +87,12 @@ export default {
     }
     const findWish = (id) => stampsD.kids.flatMap((k) => k.wishes).find((w) => w.id === id);
     const loading = () => { body.innerHTML = '<div class="sub">불러오는 중…</div>'; };
-    const load = () => { loading(); return call('missions.parent').then((p) => { setParent(p); if (tab === 'check') drawCheck(); }).catch(fail); };
+    // 지난번에 본 화면이 있으면 먼저 보여주고 새 내용을 받아 바꿔요
+    const load = () => {
+      const c = peek('missions.parent');
+      if (c && !parent) { setParent(c); drawCheck(); } else loading();
+      return call('missions.parent').then((p) => { if (saving) return; setParent(p); if (tab === 'check') drawCheck(); }).catch(fail);
+    };
     const loadWeek = () => { loading(); return call('missions.week', weekOffset).then((w) => { week = w; if (tab === 'week') drawWeek(); }).catch(fail); };
     const loadDefs = () => { loading(); return call('missions.defs').then((d) => { defs = d; if (tab === 'defs') drawDefs(); }).catch(fail); };
     const loadPay = () => { loading(); return call('missions.payouts').then((p) => { pays = p; if (tab === 'pay') drawPay(); }).catch(fail); };
@@ -126,6 +131,45 @@ export default {
       const p = await call('missions.act', kidId, date, mid, action);
       setParent(p);
       return p;
+    }
+
+    /** 확인 화면에서 바로 바꾸기 (저장은 뒤에서). list: [[kidId, date, mid, action], ...] */
+    let saving = 0;
+    function applyLocal(list) {
+      list.forEach(([kidId, date, mid, action]) => {
+        const k = parent.kids.find((x) => x.kidId === kidId);
+        if (!k) return;
+        if (date === parent.date) {
+          const m = k.items.find((x) => x.id === mid);
+          if (!m) return;
+          if (action === 'approve' || action === 'add') { if (m.state === 'pending') k.pending--; m.state = 'approved'; m.byParent = action === 'add' || m.byParent; }
+          else if (action === 'reject') { if (m.state === 'pending') k.pending--; m.state = 'none'; }
+          else if (action === 'unapprove') { m.state = 'pending'; k.pending++; }
+        } else if (action === 'approve' || action === 'reject') {
+          const before = k.past.length;
+          k.past = k.past.filter((x) => !(x.date === date && x.id === mid));
+          k.pending -= before - k.past.length;
+        }
+      });
+      state.missionPending = parent.kids.reduce((n, k) => n + k.pending, 0) + (parent.wishPending || 0);
+      emit('top');
+    }
+    async function actFast(list, msg) {
+      const prev = JSON.parse(JSON.stringify(parent));
+      applyLocal(list);
+      saving++;
+      drawCheck();
+      if (msg) toast(msg);
+      try {
+        const p = list.length === 1 ? await call('missions.act', ...list[0]) : await call('missions.actMany', list);
+        saving--;
+        week = null;
+        if (!saving) { setParent(p); if (tab === 'check') drawCheck(); }
+      } catch (err) {
+        saving--;
+        if (!saving) { setParent(prev); if (tab === 'check') drawCheck(); }
+        fail(err);
+      }
     }
 
     /** 지난 미션 넣기: 지난 7일 중 날짜를 골라 그날 미션을 넣어요 (넣으면 바로 확인됨) */
@@ -270,16 +314,16 @@ export default {
       if (ab) {
         if (ab.dataset.act === 'reject' && !armed(ab, '정말 취소할까요?')) return;
         if (ab.dataset.act === 'unapprove' && !armed(ab, '확인을 취소할까요?')) return;
-        ab.disabled = true;
-        try { await act(ab.dataset.kid, ab.dataset.date, ab.dataset.mid, ab.dataset.act); week = null; drawCheck(); } catch (err) { fail(err); ab.disabled = false; }
+        // 바로 화면에 반영하고, 저장은 뒤에서
+        actFast([[ab.dataset.kid, ab.dataset.date, ab.dataset.mid, ab.dataset.act]]);
         return;
       }
       const all = t.closest('[data-allok]');
       if (all) {
-        all.disabled = true;
         const k = parent.kids.find((x) => x.kidId === all.dataset.allok);
-        const todo = k.items.filter((m) => m.state === 'pending').map((m) => [parent.date, m.id]).concat(k.past.map((m) => [m.date, m.id]));
-        try { for (const [d, mid] of todo) await act(k.kidId, d, mid, 'approve'); week = null; drawCheck(); toast(`${todo.length}개를 확인했어요`); } catch (err) { fail(err); drawCheck(); }
+        const todo = k.items.filter((m) => m.state === 'pending').map((m) => [k.kidId, parent.date, m.id, 'approve'])
+          .concat(k.past.map((m) => [k.kidId, m.date, m.id, 'approve']));
+        if (todo.length) actFast(todo, `${todo.length}개를 확인했어요`);   // 한 번의 요청으로 모두
         return;
       }
       const past = t.closest('[data-past]'); if (past) return pastModal(past.dataset.past);
@@ -320,6 +364,6 @@ export default {
     return { onSync: () => {
       if (!state.me || state.me.role !== '부모') return;   // 공용 기기에서 아이로 바뀌는 중
       if (tab === 'stamps' && !document.querySelector('.modal-bg') && !root.querySelector('[data-armed="1"]')) call('stamps.parent').then((d) => { stampsD = d; if (tab === 'stamps') drawStamps(); }).catch(() => {});
-      if (tab === 'check') call('missions.parent').then((p) => { setParent(p); if (tab === 'check' && !root.querySelector('[data-armed="1"]')) drawCheck(); }).catch(() => {}); } };
+      if (tab === 'check' && !saving) call('missions.parent').then((p) => { if (saving) return; setParent(p); if (tab === 'check' && !root.querySelector('[data-armed="1"]')) drawCheck(); }).catch(() => {}); } };
   },
 };

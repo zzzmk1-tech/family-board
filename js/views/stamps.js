@@ -1,6 +1,6 @@
 // 도장판 (아이 화면): 엄마가 확인한 미션 1개 = 도장 1개. 갖고 싶은 것을 적고, 도장을 모으면 "사 주세요"
 // 엄마·아빠 화면은 미션 확인 → 도장판 탭 (approve.js가 아래 함수들을 같이 써요)
-import { call } from '../api.js';
+import { call, peek } from '../api.js';
 import { state } from '../state.js';
 import { esc, modal, armed, toast, fail, parseDay } from '../ui.js';
 
@@ -118,7 +118,8 @@ export default {
     });
 
     const load = () => call('stamps.view').then((x) => { d = x; draw(); });
-    root.innerHTML = '<div class="sub">불러오는 중…</div>';
+    d = peek('stamps.view');   // 지난번에 본 화면을 먼저
+    if (d) draw(); else root.innerHTML = '<div class="sub">불러오는 중…</div>';
     load().catch(fail);
     return { onSync: () => { if (!document.querySelector('.modal-bg')) load().catch(() => {}); } };
   },

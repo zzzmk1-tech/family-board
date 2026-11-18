@@ -3,7 +3,7 @@ import { call } from '../api.js';
 import { CHAT_SYNC_MS } from '../config.js';
 import { state, emit, personById, unreadTotal } from '../state.js';
 import { icon } from '../icons.js';
-import { esc, avatar, modal, armed, toast, fail, clock, atDate, koDate, dayKey } from '../ui.js';
+import { esc, avatar, modal, armed, toast, fail, clock, atDate, koDate, dayKey, nowAt } from '../ui.js';
 
 export default {
   id: 'chat', label: '대화', icon: 'chat', needsPerson: true,
@@ -76,7 +76,7 @@ export default {
         if (day !== lastDay) { out += `<div class="day-sep"><span>${esc(koDate(day))}</span></div>`; lastDay = day; lastWho = ''; }
         const mine = mm.personId === me.id, p = personById(mm.personId);
         const showWho = !mine && lastWho !== mm.personId;
-        out += `<div class="msg${mine ? ' mine' : ''}${showWho ? '' : ' cont'}">
+        out += `<div class="msg${mine ? ' mine' : ''}${showWho ? '' : ' cont'}${mm.pending ? ' saving' : ''}">
           ${mine ? '' : `<span class="msg-av">${showWho ? avatar(p, 32) : ''}</span>`}
           <div class="msg-body">${showWho ? `<div class="msg-name">${esc(p ? p.name : '가족')}</div>` : ''}
             <div class="msg-line"><div class="bubble">${linkify(esc(mm.text))}</div><span class="msg-time num">${esc(clock(mm.at))}</span></div></div></div>`;
@@ -115,13 +115,31 @@ export default {
       if (!text || !open) return;
       ta.value = '';
       ta.style.height = 'auto';
+      // 보내는 순간 대화창에 먼저 보여주고(흐리게), 저장되면 진짜 메시지로 바꿔요
+      const roomId = open.room.id;
+      const tmp = { id: 'tmp-' + Date.now() + Math.random(), roomId, personId: me.id, text, at: nowAt(), pending: true };
+      addMessages([tmp]);
       try {
-        const msg = await call('chat.send', open.room.id, text);
-        addMessages([msg]);
-        const r = state.rooms.find((x) => x.id === open.room.id);
+        const msg = await call('chat.send', roomId, text);
+        if (open && open.room.id === roomId) { open.messages = open.messages.filter((x) => x.id !== tmp.id); addMessages([msg]); redrawMsgs(); }
+        const r = state.rooms.find((x) => x.id === roomId);
         if (r) r.last = { text: msg.text, personId: msg.personId, at: msg.at };
         drawRooms();
-      } catch (err) { ta.value = text; fail(err); }
+      } catch (err) {
+        if (open && open.room.id === roomId) { open.messages = open.messages.filter((x) => x.id !== tmp.id); redrawMsgs(); }
+        if (!ta.value) ta.value = text;
+        fail(err);
+      }
+    }
+
+    function redrawMsgs() {
+      const box = root.querySelector('#msgs');
+      if (!box) return;
+      const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+      box.innerHTML = (open.more ? '<button class="ghost small more-btn" id="older">이전 메시지 더 보기</button>' : '') + msgsHtml(open.messages);
+      const older = box.querySelector('#older');
+      if (older) older.onclick = loadOlder;
+      if (atBottom) box.scrollTop = box.scrollHeight;
     }
 
     function addMessages(list) {
@@ -143,7 +161,8 @@ export default {
       stopPoll();
       poll = setInterval(async () => {
         if (!open || document.visibilityState !== 'visible') return;
-        const last = open.messages.length ? open.messages[open.messages.length - 1].at : '';
+        const real = open.messages.filter((x) => !x.pending);
+        const last = real.length ? real[real.length - 1].at : '';
         try { addMessages(await call('chat.since', open.room.id, last)); } catch (e) { /* 다음에 다시 */ }
       }, CHAT_SYNC_MS);
     }

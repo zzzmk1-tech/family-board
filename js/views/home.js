@@ -53,13 +53,23 @@ export default {
       const b = e.target.closest('[data-st]');
       if (!b) return;
       const st = b.dataset.st === state.me.status ? '' : b.dataset.st; // 같은 걸 또 누르면 해제
-      try { state.me = await call('status.set', st, null); patchMe(); draw(); } catch (err) { fail(err); }
+      setFast({ status: st }, () => call('status.set', st, null));
     });
     root.addEventListener('submit', async (e) => {
       if (e.target.id !== 'noteForm') return;
       e.preventDefault();
-      try { state.me = await call('status.set', null, root.querySelector('#noteIn').value); patchMe(); draw(); toast('남겼어요'); } catch (err) { fail(err); }
+      const note = root.querySelector('#noteIn').value.trim().slice(0, 40);
+      setFast({ statusNote: note }, () => call('status.set', null, note), '남겼어요');
     });
+
+    /** 누르는 순간 내 상태를 바꿔 보여주고, 저장은 뒤에서. 실패하면 되돌려요 */
+    async function setFast(patch, save, msg) {
+      const prev = state.me;
+      state.me = { ...state.me, ...patch, statusAt: new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 19).replace('T', ' ') };
+      patchMe(); draw();
+      if (msg) toast(msg);
+      try { state.me = await save(); patchMe(); draw(); } catch (err) { state.me = prev; patchMe(); draw(); fail(err); }
+    }
 
     draw();
     drawToday();
