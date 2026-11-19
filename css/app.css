@@ -348,6 +348,12 @@ button.nowrap:has(> .i) { display: inline-flex; align-items: center; gap: 4px; }
 .hero .when { font-size: 14px; opacity: .85; position: relative; }
 .hero .mascot { position: absolute; right: 14px; top: 10px; font-size: 58px; line-height: 1.1; transform: rotate(-8deg); }
 .hero .mascot img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid rgba(255, 255, 255, .7); }
+.hero.has-photo .mascot { transform: none; }
+.hero.big { min-height: 128px; display: flex; flex-direction: column; justify-content: center; }
+.hero.big h1 { font-size: 26px; padding-right: 116px; }
+.hero.big .when { padding-right: 116px; }
+.hero.big .mascot { top: 50%; right: 16px; transform: translateY(-50%); font-size: 76px; }
+.hero.big .mascot img { width: 104px; height: 104px; border-width: 4px; }
 .hero .blob { position: absolute; right: -30px; bottom: -40px; width: 140px; height: 140px; border-radius: 50%; background: rgba(255, 255, 255, .15); }
 .hero .prog { margin-top: 16px; position: relative; }
 .hero .prog-l { display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; margin-bottom: 6px; }
