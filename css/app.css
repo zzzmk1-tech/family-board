@@ -215,8 +215,10 @@ button.busy::after { content: ''; position: absolute; right: 6px; top: 50%; widt
 .stamp-count .big-star { font-size: 40px; align-self: center; }
 .stamp-count b { font-size: 48px; font-weight: 800; color: var(--accent); line-height: 1; }
 /* 스티커판: 아이 화면 색 동그라미 + 흰 아이콘. 한 판 20칸(한 줄 5칸), 넘치면 옆으로 넘겨요 */
-.stampboard { margin: 8px 0; }
+.stampboard { margin: 8px 0; container-type: inline-size; }
 .stampgrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; max-width: 400px; margin: 0 auto; }
+/* 판이 넓으면(PC·태블릿 가로) 한 줄에 10칸: 한 판 20개가 두 줄로 */
+@container (min-width: 540px) { .stampgrid { grid-template-columns: repeat(10, minmax(0, 1fr)); max-width: 780px; } }
 .stampcell { aspect-ratio: 1; border-radius: 50%; border: 1.5px dashed var(--line, #d9d9d9); display: grid; place-items: center; color: var(--muted); }
 /* 파스텔 배경(아이콘 색을 옅게) + 같은 계열 진한 아이콘. 어두운 화면에서도 배경 위에 옅게 섞여요 */
 .stampcell.on { border: 0; color: var(--sfg, var(--accent)); background: color-mix(in srgb, var(--sfg, var(--accent)) 16%, var(--surface)); }
