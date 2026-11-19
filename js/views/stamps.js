@@ -36,9 +36,11 @@ const GIFT = svg('<g fill="none" stroke="currentColor" stroke-width="1.8" stroke
  * newFrom: 이 번호부터는 '새로 붙은 스티커'라서 꾹 붙는 움직임을 보여줘요
  * (화면에 넣은 뒤 initSliders(감싸는 요소)를 불러야 지금 판으로 넘어가요)
  */
-export function boardHtml(have, need, newFrom) {
+export function boardHtml(have, need, newFrom, gift = true) {
   const n = Math.max(0, Math.min(have, need));
   if (!need) return '';
+  // gift=false: 목표 전 '모으는 판' (선물 칸·다 모았어요 움직임 없음)
+  const full = gift && n >= need;
   const from = newFrom == null ? n : Math.max(0, newFrom);
   const cell = (i) => {
     if (i < n) {
@@ -46,7 +48,8 @@ export function boardHtml(have, need, newFrom) {
       const [icon, color] = sticker(i);
       return `<span class="stampcell on${isNew ? ' new' : ''}" style="--sfg:${color}${isNew ? `;--delay:${Math.min(i - from, 15) * 110}ms` : ''}" aria-hidden="true">${icon}</span>`;
     }
-    return `<span class="stampcell${i === need - 1 ? ' gift' : ''}" aria-hidden="true">${i === need - 1 ? GIFT : ''}</span>`;
+    const g = gift && i === need - 1;
+    return `<span class="stampcell${g ? ' gift' : ''}" aria-hidden="true">${g ? GIFT : ''}</span>`;
   };
   const pages = Math.ceil(need / PER_BOARD);
   const current = Math.min(pages - 1, Math.floor(Math.min(n, need - 1) / PER_BOARD));   // 지금 채우는 판
@@ -54,9 +57,9 @@ export function boardHtml(have, need, newFrom) {
     const start = p * PER_BOARD, end = Math.min(need, start + PER_BOARD);
     return `<div class="stamppage"><div class="stampgrid">${Array.from({ length: end - start }, (_, k) => cell(start + k)).join('')}</div></div>`;
   }).join('');
-  const label = `스티커 ${need}개 중 ${n}개`;
-  if (pages === 1) return `<div class="stampboard${n >= need ? ' full' : ''}" role="img" aria-label="${label}">${boards}</div>`;
-  return `<div class="stampboard multi${n >= need ? ' full' : ''}" data-start="${current}" role="group" aria-label="${label}, ${pages}판">
+  const label = gift ? `스티커 ${need}개 중 ${n}개` : `모은 스티커 ${n}개`;
+  if (pages === 1) return `<div class="stampboard${full ? ' full' : ''}" role="img" aria-label="${label}">${boards}</div>`;
+  return `<div class="stampboard multi${full ? ' full' : ''}" data-start="${current}" role="group" aria-label="${label}, ${pages}판">
     <div class="stampnav"><button type="button" class="ghost small" data-slide="-1" aria-label="이전 판">‹</button>
       <span class="stampnav-label"><b class="num" data-pageno>${current + 1}</b> / ${pages}판</span>
       <button type="button" class="ghost small" data-slide="1" aria-label="다음 판">›</button></div>
@@ -134,10 +137,12 @@ export function wishForm({ wish, kidId, rate, parent, onSaved }) {
 /** 목표 카드 (도장판, 아이 홈). d: stamps.view 결과. home: 홈에 짧게 보여줄 때. fresh: 새로 붙은 스티커 수 */
 export function goalCardHtml(d, home, fresh) {
   const g = d.wishes.find((w) => w.goal) || null;
+  // 목표 전에도 모은 스티커는 판에 붙여 보여줘요 (20칸씩, 다 차면 다음 판)
+  const collect = (have) => boardHtml(have, Math.max(1, Math.ceil(have / PER_BOARD)) * PER_BOARD, fresh ? have - fresh : undefined, false);
   if (!g) {
-    const msg = d.wishes.length ? '갖고 싶은 것 중 하나를 <b>목표로</b> 골라 보세요! 🎯' : '갖고 싶은 것을 적고 목표로 골라 보세요! 🎁';
+    const msg = d.wishes.length ? '갖고 싶은 것 중 하나를 <b>목표로</b> 고르면 선물 칸이 생겨요! 🎯' : '갖고 싶은 것을 적고 목표로 고르면 선물 칸이 생겨요! 🎁';
     return `<section class="panel goal-card"><div class="head"><h2>★ 도장 ${d.balance}개</h2>${home ? '<button class="ghost small" data-go="stamps">도장판 ›</button>' : ''}</div>
-      <p class="sub">${msg}</p></section>`;
+      ${collect(d.available)}<p class="sub">${msg}</p></section>`;
   }
   const need = g.stamps || 0;
   const have = d.available + (g.status === '요청' ? need : 0);   // 사 달라고 한 건 이미 모은 거예요
@@ -150,7 +155,7 @@ export function goalCardHtml(d, home, fresh) {
   const done = g.status === '확인' && left === 0;
   return `<section class="panel goal-card${done ? ' complete' : ''}"><div class="head"><h2>🎯 ${esc(g.title)}</h2>
       <span class="sub">${!home && g.price ? won(g.price) + ' · ' : ''}${need && g.status !== '대기' ? `${Math.min(have, need)} / ${need}` : `도장 ${d.balance}개`}</span></div>
-    ${g.status !== '대기' ? boardHtml(have, need, fresh ? have - fresh : undefined) : ''}
+    ${g.status !== '대기' ? boardHtml(have, need, fresh ? have - fresh : undefined) : collect(have)}
     ${!home && g.note ? `<p class="sub">${esc(g.note)}</p>` : ''}${!home && g.link ? `<a class="sub" href="${esc(g.link)}" target="_blank" rel="noopener">링크 보기 ↗</a>` : ''}
     ${action}
     ${home ? '<div class="row end"><button class="ghost small" data-go="stamps">도장판 ›</button></div>'
