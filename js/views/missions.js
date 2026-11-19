@@ -30,10 +30,11 @@ function stampStripHtml(s) {
 }
 
 /** 인사 카드 (홈에서도 써요) */
-export function heroHtml({ person, hello, title, when, progress }) {
+// 보드 이름과 날짜는 화면 맨 위에 이미 있어서 여기서는 되풀이하지 않아요. big = 홈처럼 내 그림을 크게
+export function heroHtml({ person, hello, title, when, progress, big }) {
   const mascot = person && person.photo ? `<img src="${esc(person.photo)}" alt="">` : esc((person && person.emoji) || '⭐');
-  return `<div class="hero"><div class="blob"></div><div class="mascot" aria-hidden="true">${mascot}</div>
-    <div class="hello">${esc(hello)}</div><h1>${esc(title)}</h1><div class="when">${esc(when)}</div>
+  return `<div class="hero${big ? ' big' : ''}${person && person.photo ? ' has-photo' : ''}"><div class="blob"></div><div class="mascot" aria-hidden="true">${mascot}</div>
+    ${hello ? `<div class="hello">${esc(hello)}</div>` : ''}<h1>${esc(title)}</h1>${when ? `<div class="when">${esc(when)}</div>` : ''}
     ${progress ? `<div class="prog"><div class="prog-l"><span>${esc(progress.label)}</span><span class="num">${progress.pct}%</span></div>
       <div class="bar" role="progressbar" aria-valuenow="${progress.pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${progress.pct}%"></i></div></div>` : ''}</div>`;
 }
@@ -58,7 +59,7 @@ export default {
       const done = d.coreDone + d.corePending; // 체크한 것까지 진행으로 보여줘요 (예전 앱과 같아요)
       const pct = d.coreTotal ? Math.round((done / d.coreTotal) * 100) : 100;
       const label = !d.coreTotal ? '오늘은 쉬는 날' : done === d.coreTotal ? '기본 미션 끝! 최고야 🎉' : `기본 미션 ${done} / ${d.coreTotal}`;
-      top.innerHTML = `<div class="view-body">${heroHtml({ person: state.me, hello: `안녕, ${d.name}!`, title: `${d.name}의 오늘 미션`, when: d.dateLabel, progress: { label, pct } })}
+      top.innerHTML = `<div class="view-body">${heroHtml({ person: state.me, hello: `안녕, ${d.name}!`, title: `${d.name}의 오늘 미션`, progress: { label, pct } })}
         <div class="stats"><div class="stat"><b class="num">${d.todayPoints.toLocaleString()}</b><span class="sub">오늘 받은 포인트</span></div>
           <div class="stat"><b class="num">${d.monthPoints.toLocaleString()}</b><span class="sub">이번 달</span></div></div>
         ${d.stamp ? stampStripHtml(d.stamp) : ''}</div>`;

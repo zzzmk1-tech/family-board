@@ -15,7 +15,7 @@ export default {
   mount(root) {
     const me = state.me;
     root.innerHTML = `
-      ${heroHtml({ person: me || { emoji: '🏡' }, hello: me ? `안녕, ${me.name}!` : '안녕하세요!', title: state.settings.familyName || '우리 가족', when: koDate(dayKey()) })}
+      ${heroHtml({ person: me || { emoji: '🏡' }, title: me ? `안녕, ${me.name}!` : '안녕하세요!', when: '오늘도 좋은 하루 보내요', big: true })}
       <div id="stampBox"></div>
       <section class="panel"><div class="head"><h2>가족 상태</h2></div><div class="magnets" id="magnets"></div></section>
       <div class="grid2">
