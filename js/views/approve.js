@@ -99,7 +99,7 @@ export default {
           k.pending -= before - k.past.length;
         }
       });
-      state.missionPending = parent.kids.reduce((n, k) => n + k.pending, 0) + (parent.wishPending || 0);
+      state.missionPending = parent.kids.reduce((n, k) => n + k.pending, 0);   // 도장판 할 일은 도장판 메뉴 숫자에 따로
       emit('top');
     }
     async function actFast(list, msg) {

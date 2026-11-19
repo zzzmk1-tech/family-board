@@ -8,6 +8,15 @@ import { missionIcon } from '../theme.js';
 
 export const KIND_LABEL = { '보너스': '선택', '완료보너스': '보너스', '주말': '토·일 중 하루' };
 
+// '포인트 받는 방법' 아래에 붙는 도장 규칙 (서버 규칙과 같아요: Stamps.gs)
+const STAMP_RULES = [
+  '★ 도장: 엄마가 확인한 미션 1개 = 도장 1개 (보너스 미션도 1개씩)',
+  '★ "놀기 전에 끝냈어요" 같은 보너스는 그날 기본 미션을 다 했을 때만 도장을 받아요',
+  '★ 하루 완료 보너스·주간 보너스는 포인트만 받고 도장은 더 없어요',
+  '★ 도장을 모아 갖고 싶은 것을 받아요! 도장판에서 목표를 골라 보세요',
+];
+const rulesHtml = (rules) => rules.concat(STAMP_RULES).map((r) => `<li>${esc(r)}</li>`).join('');
+
 /** 미션 화면 위의 도장 한 줄: 누르면 도장판으로 */
 function stampStripHtml(s) {
   const g = s.goal;
@@ -77,7 +86,7 @@ export default {
         ${!d.items.length ? '<div class="rest"><div class="big">😴</div>오늘은 쉬는 날이에요. 푹 쉬어요!</div>' : ''}
         ${must.length ? `<div class="sec">오늘 꼭 할 미션</div><div class="missions">${must.map(itemHtml).join('')}</div>` : ''}
         ${more.length ? `<div class="sec">더 하면 포인트 UP</div><div class="missions">${more.map(itemHtml).join('')}</div>` : ''}
-        <details class="guide"><summary>💡 포인트 받는 방법</summary><ul class="rules">${d.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></details>`;
+        <details class="guide"><summary>💡 포인트·도장 받는 방법</summary><ul class="rules">${rulesHtml(d.rules)}</ul></details>`;
     }
 
     function itemHtml(m) {
@@ -117,7 +126,7 @@ export default {
       body.innerHTML = data.week.map((w) => `<div class="dayplan${'월화수목금토일'.indexOf(w.day) + 1 === todayDow ? ' today' : ''}">
           <b>${esc(w.day)}요일</b>${'월화수목금토일'.indexOf(w.day) + 1 === todayDow ? '<span class="now">오늘</span>' : ''}
           <ul>${w.missions.map((t) => `<li>${missionIcon(t)} ${esc(t)}</li>`).join('')}</ul></div>`).join('')
-        + `<details class="guide" open><summary>💡 포인트 받는 방법</summary><ul class="rules">${data.rules.map((r) => `<li>${esc(r)}</li>`).join('')}</ul></details>`;
+        + `<details class="guide" open><summary>💡 포인트·도장 받는 방법</summary><ul class="rules">${rulesHtml(data.rules)}</ul></details>`;
     }
 
     root.querySelector('#tabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; draw(); } };
