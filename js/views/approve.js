@@ -8,6 +8,19 @@ import { KIND_LABEL } from './missions.js';
 
 const DAYS = ['', '월', '화', '수', '목', '금', '토', '일'];
 
+// 칭찬모아 지급 스크립트는 Firefox에만 있어요. 안드로이드 휴대폰에서는 기본 브라우저가 무엇이든
+// "칭찬모아 열기"를 Firefox로 열어요 (Firefox가 없으면 원래 브라우저로 열려요). PC는 그대로예요.
+export function chingchanLink(url, ua) {
+  if (!/Android/i.test(ua ?? navigator.userAgent)) return { href: url, blank: true };
+  const u = new URL(url);
+  u.searchParams.set('familyboard', '1');   // 주소 끝 #표시가 빠져도 스크립트가 알아보게
+  return {
+    href: 'intent://' + u.host + u.pathname + u.search + u.hash +
+      '#Intent;scheme=https;package=org.mozilla.firefox;S.browser_fallback_url=' + encodeURIComponent(url) + ';end',
+    blank: false,
+  };
+}
+
 export default {
   id: 'approve', label: '미션 확인', icon: 'approve', needsPerson: true,
   visible: (s) => !!s.me && s.me.role === '부모',
@@ -227,8 +240,9 @@ export default {
 
     /* ---------- 칭찬모아 ---------- */
     function drawPay() {
+      const cm = chingchanLink(pays.openUrl);
       body.innerHTML = `<section class="panel"><div class="head"><h2>미지급 포인트</h2>
-            <a class="button primary small nowrap" href="${esc(pays.openUrl)}" target="_blank" rel="noopener">칭찬모아 열기 ↗</a></div>
+            <a class="button primary small nowrap" href="${esc(cm.href)}"${cm.blank ? ' target="_blank" rel="noopener"' : ''}>칭찬모아 열기 ↗</a></div>
           <p class="sub">아이가 받았지만 아직 칭찬모아에 넣어 주지 않은 포인트예요. 칭찬모아에서 포인트를 준 뒤 "줬어요"를 누르면 여기서 빠져요.
             Firefox 자동 지급 스크립트를 쓰면 저절로 기록돼요.</p>
           <div class="list">${pays.kids.map((k) => `<div class="item">${avatar(personById(k.kidId), 36)}
@@ -240,7 +254,7 @@ export default {
             <span class="grow">${esc(personById(h.kidId)?.name || h.kidId)} · ${esc(h.memo)}${/^자동/.test(h.by) ? ' <span class="btag">자동</span>' : ''}</span><b class="num">${h.amount.toLocaleString()}</b></div>`).join('') : '<div class="empty">아직 지급 기록이 없어요.</div>'}</div></section>
         <section class="panel"><div class="head"><h2>Firefox 자동 지급</h2></div>
           <ol class="rules">
-            <li>PC에서 가족 보드를 <b>Firefox</b>로 열어 두면, 위의 <b>칭찬모아 열기</b>가 같은 Firefox에서 열려요.</li>
+            <li>안드로이드 휴대폰에서는 위의 <b>칭찬모아 열기</b>를 누르면 기본 브라우저와 상관없이 <b>Firefox</b>로 열려요. (PC는 가족 보드를 Firefox로 열어 두면 같은 Firefox에서 열려요)</li>
             <li>칭찬모아에 로그인하면 스크립트가 <b>포인트 지급하기</b> 화면으로 데려가요. (칭찬모아 주소의 버전 번호가 바뀌어도 메뉴를 찾아가요)</li>
             <li>화면 왼쪽 아래 <b>미션 포인트 가져오기</b>를 누르면 아이별로 지급하고 여기에 기록해요.</li>
             <li>처음 한 번(또는 가족 보드로 바꾼 뒤 처음) <b>엄마 비밀번호</b>를 물어봐요. 아래 값을 붙여 넣어 주세요.</li></ol>
