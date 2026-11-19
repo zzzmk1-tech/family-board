@@ -11,7 +11,7 @@ const won = (n) => Math.round(n).toLocaleString('ko-KR') + '원';
 export const STATUS_TEXT = { '대기': '엄마·아빠가 도장 개수를 정하는 중', '확인': '', '요청': '사 달라고 했어요 ⏳', '받음': '받았어요 🎉' };
 
 /* ---------- 스티커판 ----------
- * 미션 1개 = 스티커 1개. 아이 화면 색 동그라미에 흰 아이콘(별·하트·엄지척·체크·반짝이)이 섞여 붙어요.
+ * 미션 1개 = 스티커 1개. 파스텔 동그라미에 같은 계열 진한 아이콘(별·하트·엄지척·체크·반짝이)이 섞여 붙어요.
  * 순서는 정해져 있어서 같은 칸에는 늘 같은 스티커가 붙어요.
  * 한 판에 PER_BOARD(20)개. 더 많으면 여러 판을 옆으로 넘겨 봐요.
  */
@@ -24,8 +24,10 @@ const STICKERS = [
   svg('<path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.6 4.6 4.6L19.2 7"/>'),   // 체크
   svg('<path fill="currentColor" d="M12 2.5c.6 4.6 2.9 6.9 7.5 7.5-4.6.6-6.9 2.9-7.5 7.5-.6-4.6-2.9-6.9-7.5-7.5 4.6-.6 6.9-2.9 7.5-7.5zM19 15.5c.3 2 1.2 2.9 3 3.2-1.8.3-2.7 1.2-3 3.1-.3-1.9-1.2-2.8-3-3.1 1.8-.3 2.7-1.2 3-3.2z"/>'),   // 반짝이
 ];
+// 아이콘 색 (별 노랑, 하트 분홍, 엄지척 하늘, 체크 초록, 반짝이 보라). 배경은 이 색을 옅게 섞은 파스텔이에요 (CSS --sfg)
+const STICKER_COLORS = ['#C98A12', '#D4537E', '#378ADD', '#1D9E75', '#7F77DD'];
 // 줄마다 순서를 두 칸씩 밀어서, 옆 칸·위아래 칸에 같은 아이콘이 오지 않게 섞어요
-const sticker = (i) => STICKERS[(i + Math.floor(i / 5) * 2) % STICKERS.length];
+const sticker = (i) => { const k = (i + Math.floor(i / 5) * 2) % STICKERS.length; return [STICKERS[k], STICKER_COLORS[k]]; };
 const GIFT = svg('<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="11" rx="1.5"/><path d="M3 9h18v-1.5H3zM12 7.5V20M12 7.5c-1.5-3-5-3-5-1s3 1 5 1zm0 0c1.5-3 5-3 5-1s-3 1-5 1z"/></g>');
 
 /**
@@ -41,7 +43,8 @@ export function boardHtml(have, need, newFrom) {
   const cell = (i) => {
     if (i < n) {
       const isNew = i >= from;
-      return `<span class="stampcell on${isNew ? ' new' : ''}"${isNew ? ` style="--delay:${Math.min(i - from, 15) * 110}ms"` : ''} aria-hidden="true">${sticker(i)}</span>`;
+      const [icon, color] = sticker(i);
+      return `<span class="stampcell on${isNew ? ' new' : ''}" style="--sfg:${color}${isNew ? `;--delay:${Math.min(i - from, 15) * 110}ms` : ''}" aria-hidden="true">${icon}</span>`;
     }
     return `<span class="stampcell${i === need - 1 ? ' gift' : ''}" aria-hidden="true">${i === need - 1 ? GIFT : ''}</span>`;
   };
