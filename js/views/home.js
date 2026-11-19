@@ -1,6 +1,6 @@
 // 🏠 홈: 가족 상태판, 내 상태 바꾸기, 오늘 일정
 import { call, peek } from '../api.js';
-import { goalCardHtml, kidsSummaryHtml } from './stamps.js';
+import { goalCardHtml, kidsSummaryHtml, newStickers } from './stamps.js';
 import { state, emit, unreadTotal } from '../state.js';
 import { esc, avatar, ago, fail, toast, dayKey } from '../ui.js';
 import { eventsCache, eventsOn, evRow } from '../events.js';
@@ -75,12 +75,19 @@ export default {
 
     // 도장: 아이는 내 목표와 도장, 엄마·아빠는 아이들 도장 (지난번 내용을 먼저 보여주고 새로 받아요)
     const stampFn = !me ? null : me.role === '아이' ? 'stamps.view' : 'stamps.parent';
-    const drawStamps = (d) => {
+    let lastStamps = '';
+    const drawStamps = (d, fresh) => {
       const box = root.querySelector('#stampBox');
-      if (box && d) box.innerHTML = me.role === '아이' ? goalCardHtml(d, true) : kidsSummaryHtml(d);
+      if (!box || !d) return;
+      const key = JSON.stringify(d);
+      if (key === lastStamps && !fresh) return;   // 같으면 다시 그리지 않아요 (스티커 붙는 움직임이 끊기지 않게)
+      lastStamps = key;
+      box.innerHTML = me.role === '아이' ? goalCardHtml(d, true, fresh) : kidsSummaryHtml(d);
     };
     // 공용 기기에서 사람이 바뀌는 중이면 예전 사람 것은 부르지 않아요
-    const loadStamps = () => (stampFn && state.me && state.me.id === me.id ? call(stampFn).then(drawStamps).catch(() => {}) : null);
+    // 아이: 새로 붙은 스티커는 홈에서도 꾹 붙는 움직임으로
+    const loadStamps = () => (stampFn && state.me && state.me.id === me.id
+      ? call(stampFn).then((d) => drawStamps(d, me.role === '아이' ? newStickers(me.id, d.balance) : 0)).catch(() => {}) : null);
     if (stampFn) drawStamps(peek(stampFn));
 
     draw();

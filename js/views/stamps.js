@@ -10,16 +10,45 @@ import { icon } from '../icons.js';
 const won = (n) => Math.round(n).toLocaleString('ko-KR') + '원';
 export const STATUS_TEXT = { '대기': '엄마·아빠가 도장 개수를 정하는 중', '확인': '', '요청': '사 달라고 했어요 ⏳', '받음': '받았어요 🎉' };
 
-/** 도장 칸: 목표 개수만큼 칸을 그리고 모은 만큼 찍어요 (칸이 많으면 막대로) */
-export function boardHtml(have, need) {
+/* ---------- 스티커판 ----------
+ * 미션 1개 = 스티커 1개. 별·하트·엄지척 … 10가지가 섞여서 붙어요 (아이 모두 같은 스티커).
+ * 순서는 정해져 있어서 같은 칸에는 늘 같은 스티커가 붙어요.
+ */
+const STICKERS = [
+  ['⭐', '#FFF1C2'], ['💖', '#FFE1EC'], ['👍', '#DDEEFF'], ['😊', '#FFF1C2'], ['🌸', '#FFE1EC'],
+  ['🍀', '#E3F4D6'], ['🌈', '#ECE8FF'], ['🏆', '#FFEBC7'], ['🎈', '#FFE0E0'], ['✨', '#DDF4EC'],
+];
+const sticker = (i) => STICKERS[(i * 7 + 3) % STICKERS.length];   // 옆 칸끼리 겹치지 않게 섞어요
+
+/**
+ * 스티커판: 목표 개수만큼 칸을 그리고 모은 만큼 붙여요. 마지막 칸은 선물.
+ * newFrom: 이 번호부터는 '새로 붙은 스티커'라서 꾹 붙는 움직임을 보여줘요
+ * (칸이 60개보다 많으면 막대로)
+ */
+export function boardHtml(have, need, newFrom) {
   const n = Math.max(0, Math.min(have, need));
   if (!need) return '';
   if (need > 60) {
     const pct = Math.round((n / need) * 100);
     return `<div class="bar stamp-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>`;
   }
-  return `<div class="stampgrid" aria-label="도장 ${need}개 중 ${n}개">${Array.from({ length: need }, (_, i) =>
-    `<span class="stampcell${i < n ? ' on' : ''}" aria-hidden="true">${i < n ? '★' : ''}</span>`).join('')}</div>`;
+  const from = newFrom == null ? n : Math.max(0, newFrom);
+  return `<div class="stampgrid${n >= need ? ' full' : ''}${need > 30 ? ' many' : ''}" role="img" aria-label="스티커 ${need}개 중 ${n}개">${Array.from({ length: need }, (_, i) => {
+    if (i < n) {
+      const [s, bg] = sticker(i);
+      const isNew = i >= from;
+      return `<span class="stampcell on${isNew ? ' new' : ''}" style="--sbg:${bg};--rot:${((i * 37) % 21) - 10}deg${isNew ? `;--delay:${(i - from) * 120}ms` : ''}" aria-hidden="true">${s}</span>`;
+    }
+    return `<span class="stampcell${i === need - 1 ? ' gift' : ''}" aria-hidden="true">${i === need - 1 ? '🎁' : ''}</span>`;
+  }).join('')}</div>`;
+}
+
+/** 아이 기기에서: 지난번에 본 뒤로 새로 생긴 스티커 수 (그것만 꾹 붙는 움직임을 보여줘요) */
+export function newStickers(kidId, balance) {
+  const key = 'fb.seenStickers.' + kidId;
+  let prev = null;
+  try { prev = localStorage.getItem(key); localStorage.setItem(key, String(balance)); } catch (e) { /* 괜찮아요 */ }
+  return prev == null ? 0 : Math.max(0, balance - (Number(prev) || 0));
 }
 
 /** 갖고 싶은 것 적기·고치기 팝업. onSaved(새 데이터) */
@@ -58,8 +87,8 @@ export function wishForm({ wish, kidId, rate, parent, onSaved }) {
   };
 }
 
-/** 목표 카드 (도장판, 아이 홈). d: stamps.view 결과. home: 홈에 짧게 보여줄 때 */
-export function goalCardHtml(d, home) {
+/** 목표 카드 (도장판, 아이 홈). d: stamps.view 결과. home: 홈에 짧게 보여줄 때. fresh: 새로 붙은 스티커 수 */
+export function goalCardHtml(d, home, fresh) {
   const g = d.wishes.find((w) => w.goal) || null;
   if (!g) {
     const msg = d.wishes.length ? '갖고 싶은 것 중 하나를 <b>목표로</b> 골라 보세요! 🎯' : '갖고 싶은 것을 적고 목표로 골라 보세요! 🎁';
@@ -72,11 +101,12 @@ export function goalCardHtml(d, home) {
   let action = '';
   if (g.status === '대기') action = `<p class="hint">엄마·아빠가 도장 개수를 정하는 중이에요${need ? ` (예상 ${need}개)` : ''}.</p>`;
   else if (g.status === '요청') action = `<p class="hint">엄마·아빠에게 사 달라고 했어요 ⏳</p>${home ? '' : `<button class="ghost small" data-cancel="${esc(g.id)}">사 달라는 거 취소</button>`}`;
-  else if (left === 0) action = home ? '<button class="primary big-btn" data-go="stamps">🎁 다 모았어요! 사 달라고 하러 가기</button>' : `<button class="primary big-btn" data-req="${esc(g.id)}">🎁 사 주세요!</button>`;
+  else if (left === 0) action = `<p class="goal-done">다 모았어요! 🎉</p>` + (home ? '<button class="primary big-btn" data-go="stamps">🎁 사 달라고 하러 가기</button>' : `<button class="primary big-btn" data-req="${esc(g.id)}">🎁 사 주세요!</button>`);
   else action = `<p class="goal-left">도장 <b class="num">${left}</b>개 더 모으면 받아요! 💪</p>`;
-  return `<section class="panel goal-card"><div class="head"><h2>🎯 ${esc(g.title)}</h2>
-      <span class="sub">${!home && g.price ? won(g.price) + ' · ' : ''}${need && g.status !== '대기' ? `도장 ${Math.min(have, need)} / ${need}` : `도장 ${d.balance}개`}</span></div>
-    ${g.status !== '대기' ? boardHtml(have, need) : ''}
+  const done = g.status === '확인' && left === 0;
+  return `<section class="panel goal-card${done ? ' complete' : ''}"><div class="head"><h2>🎯 ${esc(g.title)}</h2>
+      <span class="sub">${!home && g.price ? won(g.price) + ' · ' : ''}${need && g.status !== '대기' ? `${Math.min(have, need)} / ${need}` : `도장 ${d.balance}개`}</span></div>
+    ${g.status !== '대기' ? boardHtml(have, need, fresh ? have - fresh : undefined) : ''}
     ${!home && g.note ? `<p class="sub">${esc(g.note)}</p>` : ''}${!home && g.link ? `<a class="sub" href="${esc(g.link)}" target="_blank" rel="noopener">링크 보기 ↗</a>` : ''}
     ${action}
     ${home ? '<div class="row end"><button class="ghost small" data-go="stamps">도장판 ›</button></div>'
@@ -105,9 +135,10 @@ export default {
   badge: (s) => (s.me && s.me.role === '부모' ? s.wishPending || 0 : 0),
   mount(root) {
     if (state.me.role !== '아이') return mountParent(root);
-    let d = null;
+    let d = null, fresh = 0;   // fresh: 지난번에 본 뒤로 새로 붙은 스티커 수 (한 번만 움직여요)
 
     function draw() {
+      setTimeout(() => { fresh = 0; }, 0);
       const goal = d.wishes.find((w) => w.goal) || null;
       const others = d.wishes.filter((w) => w !== goal);
       const DOWS = '일월화수목금토';
@@ -116,7 +147,7 @@ export default {
           <div class="stamp-count"><span class="big-star" aria-hidden="true">★</span><b class="num">${d.balance}</b><span>개</span></div>
           <div class="sub">${d.today ? `오늘 도장 +${d.today}개! ` : ''}엄마가 확인한 미션 1개 = 도장 1개${d.available < d.balance ? ` · 사 달라고 한 것 ${d.balance - d.available}개 빼고 ${d.available}개 쓸 수 있어요` : ''}</div>
         </section>
-        ${goalCardHtml(d, false)}
+        ${goalCardHtml(d, false, fresh)}
         <section class="panel"><div class="head"><h2>갖고 싶은 것</h2></div>
           <div class="list">${others.map(wishRowHtml).join('') || (goal ? '<div class="sub">더 갖고 싶은 게 있으면 적어 두세요.</div>' : '')}</div>
           <button class="add-btn" id="wAdd">+ 갖고 싶은 것 적기</button></section>
@@ -145,7 +176,13 @@ export default {
       const cc = t.closest('[data-cancel]'); if (cc) { if (!armed(cc, '취소할까요?')) return; return act('wish.cancel', cc.dataset.cancel, '취소했어요'); }
     });
 
-    const load = () => call('stamps.view').then((x) => { d = x; draw(); });
+    let lastKey = '';
+    const load = () => call('stamps.view').then((x) => {
+      fresh = newStickers(state.me.id, x.balance);
+      const key = JSON.stringify(x);
+      if (key === lastKey && !fresh) return;   // 같으면 다시 그리지 않아요 (스티커 붙는 움직임이 끊기지 않게)
+      lastKey = key; d = x; draw();
+    });
     d = peek('stamps.view');   // 지난번에 본 화면을 먼저
     if (d) draw(); else root.innerHTML = '<div class="sub">불러오는 중…</div>';
     load().catch(fail);
