@@ -11,36 +11,77 @@ const won = (n) => Math.round(n).toLocaleString('ko-KR') + '원';
 export const STATUS_TEXT = { '대기': '엄마·아빠가 도장 개수를 정하는 중', '확인': '', '요청': '사 달라고 했어요 ⏳', '받음': '받았어요 🎉' };
 
 /* ---------- 스티커판 ----------
- * 미션 1개 = 스티커 1개. 별·하트·엄지척 … 10가지가 섞여서 붙어요 (아이 모두 같은 스티커).
+ * 미션 1개 = 스티커 1개. 아이 화면 색 동그라미에 흰 아이콘(별·하트·엄지척·체크·반짝이)이 섞여 붙어요.
  * 순서는 정해져 있어서 같은 칸에는 늘 같은 스티커가 붙어요.
+ * 한 판에 PER_BOARD(20)개. 더 많으면 여러 판을 옆으로 넘겨 봐요.
  */
+const PER_BOARD = 20;
+const svg = (inner) => `<svg viewBox="0 0 24 24" width="58%" height="58%" aria-hidden="true">${inner}</svg>`;
 const STICKERS = [
-  ['⭐', '#FFF1C2'], ['💖', '#FFE1EC'], ['👍', '#DDEEFF'], ['😊', '#FFF1C2'], ['🌸', '#FFE1EC'],
-  ['🍀', '#E3F4D6'], ['🌈', '#ECE8FF'], ['🏆', '#FFEBC7'], ['🎈', '#FFE0E0'], ['✨', '#DDF4EC'],
+  svg('<path fill="currentColor" d="m12 3.2 2.7 5.5 6 .9-4.4 4.2 1.1 6L12 17l-5.4 2.8 1.1-6-4.4-4.2 6-.9z"/>'),                          // 별
+  svg('<path fill="currentColor" d="M12 20.6S3.6 15.6 2.7 10.4C2 6.9 4.3 4.6 7.1 4.6c2 0 3.5 1.1 4.9 3 1.4-1.9 2.9-3 4.9-3 2.8 0 5.1 2.3 4.4 5.8-.9 5.2-9.3 10.2-9.3 10.2z"/>'),   // 하트
+  svg('<path fill="currentColor" d="M3.5 10h3.3v10H3.5zM8.5 20V9.6l3.9-5.8c.9-1.1 2.6-.5 2.6 1v4.1h4.4c1.3 0 2.2 1.2 1.9 2.4l-1.6 6.9c-.3 1-1.1 1.8-2.2 1.8z"/>'),   // 엄지척
+  svg('<path fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.6 4.6 4.6L19.2 7"/>'),   // 체크
+  svg('<path fill="currentColor" d="M12 2.5c.6 4.6 2.9 6.9 7.5 7.5-4.6.6-6.9 2.9-7.5 7.5-.6-4.6-2.9-6.9-7.5-7.5 4.6-.6 6.9-2.9 7.5-7.5zM19 15.5c.3 2 1.2 2.9 3 3.2-1.8.3-2.7 1.2-3 3.1-.3-1.9-1.2-2.8-3-3.1 1.8-.3 2.7-1.2 3-3.2z"/>'),   // 반짝이
 ];
-const sticker = (i) => STICKERS[(i * 7 + 3) % STICKERS.length];   // 옆 칸끼리 겹치지 않게 섞어요
+// 줄마다 순서를 두 칸씩 밀어서, 옆 칸·위아래 칸에 같은 아이콘이 오지 않게 섞어요
+const sticker = (i) => STICKERS[(i + Math.floor(i / 5) * 2) % STICKERS.length];
+const GIFT = svg('<g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="9" width="16" height="11" rx="1.5"/><path d="M3 9h18v-1.5H3zM12 7.5V20M12 7.5c-1.5-3-5-3-5-1s3 1 5 1zm0 0c1.5-3 5-3 5-1s-3 1-5 1z"/></g>');
 
 /**
  * 스티커판: 목표 개수만큼 칸을 그리고 모은 만큼 붙여요. 마지막 칸은 선물.
+ * 20개가 넘으면 20개씩 여러 판으로 나눠 옆으로 넘겨 보고, 처음엔 지금 채우는 판을 보여줘요.
  * newFrom: 이 번호부터는 '새로 붙은 스티커'라서 꾹 붙는 움직임을 보여줘요
- * (칸이 60개보다 많으면 막대로)
+ * (화면에 넣은 뒤 initSliders(감싸는 요소)를 불러야 지금 판으로 넘어가요)
  */
 export function boardHtml(have, need, newFrom) {
   const n = Math.max(0, Math.min(have, need));
   if (!need) return '';
-  if (need > 60) {
-    const pct = Math.round((n / need) * 100);
-    return `<div class="bar stamp-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>`;
-  }
   const from = newFrom == null ? n : Math.max(0, newFrom);
-  return `<div class="stampgrid${n >= need ? ' full' : ''}${need > 30 ? ' many' : ''}" role="img" aria-label="스티커 ${need}개 중 ${n}개">${Array.from({ length: need }, (_, i) => {
+  const cell = (i) => {
     if (i < n) {
-      const [s, bg] = sticker(i);
       const isNew = i >= from;
-      return `<span class="stampcell on${isNew ? ' new' : ''}" style="--sbg:${bg};--rot:${((i * 37) % 21) - 10}deg${isNew ? `;--delay:${(i - from) * 120}ms` : ''}" aria-hidden="true">${s}</span>`;
+      return `<span class="stampcell on${isNew ? ' new' : ''}"${isNew ? ` style="--delay:${Math.min(i - from, 15) * 110}ms"` : ''} aria-hidden="true">${sticker(i)}</span>`;
     }
-    return `<span class="stampcell${i === need - 1 ? ' gift' : ''}" aria-hidden="true">${i === need - 1 ? '🎁' : ''}</span>`;
-  }).join('')}</div>`;
+    return `<span class="stampcell${i === need - 1 ? ' gift' : ''}" aria-hidden="true">${i === need - 1 ? GIFT : ''}</span>`;
+  };
+  const pages = Math.ceil(need / PER_BOARD);
+  const current = Math.min(pages - 1, Math.floor(Math.min(n, need - 1) / PER_BOARD));   // 지금 채우는 판
+  const boards = Array.from({ length: pages }, (_, p) => {
+    const start = p * PER_BOARD, end = Math.min(need, start + PER_BOARD);
+    return `<div class="stamppage"><div class="stampgrid">${Array.from({ length: end - start }, (_, k) => cell(start + k)).join('')}</div></div>`;
+  }).join('');
+  const label = `스티커 ${need}개 중 ${n}개`;
+  if (pages === 1) return `<div class="stampboard${n >= need ? ' full' : ''}" role="img" aria-label="${label}">${boards}</div>`;
+  return `<div class="stampboard multi${n >= need ? ' full' : ''}" data-start="${current}" role="group" aria-label="${label}, ${pages}판">
+    <div class="stampnav"><button type="button" class="ghost small" data-slide="-1" aria-label="이전 판">‹</button>
+      <span class="stampnav-label"><b class="num" data-pageno>${current + 1}</b> / ${pages}판</span>
+      <button type="button" class="ghost small" data-slide="1" aria-label="다음 판">›</button></div>
+    <div class="stampslider">${boards}</div>
+    <div class="stampdots">${Array.from({ length: pages }, (_, p) => `<i class="${p === current ? 'on' : ''}" data-dot="${p}"></i>`).join('')}</div></div>`;
+}
+
+/** 여러 판짜리 스티커판: 지금 채우는 판으로 넘기고, 화살표·점·밀기를 연결해요 */
+export function initSliders(root) {
+  (root || document).querySelectorAll('.stampboard.multi:not([data-ready])').forEach((b) => {
+    b.dataset.ready = '1';
+    const sl = b.querySelector('.stampslider');
+    const pages = sl.children.length;
+    const show = () => {
+      const p = Math.round(sl.scrollLeft / Math.max(1, sl.clientWidth));
+      b.querySelector('[data-pageno]').textContent = p + 1;
+      b.querySelectorAll('[data-dot]').forEach((d) => d.classList.toggle('on', Number(d.dataset.dot) === p));
+    };
+    const go = (p, smooth) => sl.scrollTo({ left: Math.max(0, Math.min(pages - 1, p)) * sl.clientWidth, behavior: smooth ? 'smooth' : 'auto' });
+    requestAnimationFrame(() => { go(Number(b.dataset.start) || 0, false); show(); });
+    sl.addEventListener('scroll', () => requestAnimationFrame(show), { passive: true });
+    b.addEventListener('click', (e) => {
+      const s = e.target.closest('[data-slide]');
+      if (s) { e.stopPropagation(); go(Math.round(sl.scrollLeft / sl.clientWidth) + Number(s.dataset.slide), true); return; }
+      const d = e.target.closest('[data-dot]');
+      if (d) { e.stopPropagation(); go(Number(d.dataset.dot), true); }
+    });
+  });
 }
 
 /** 아이 기기에서: 지난번에 본 뒤로 새로 생긴 스티커 수 (그것만 꾹 붙는 움직임을 보여줘요) */
@@ -155,6 +196,7 @@ export default {
           <div class="stampdays">${d.days.map((x) => { const dt = parseDay(x.date); return `<div class="sday${x.count ? ' on' : ''}"><span class="sub">${dt.getMonth() + 1}/${dt.getDate()}<br>${DOWS[dt.getDay()]}</span><b class="num">${x.count ? '★' + x.count : '·'}</b></div>`; }).join('')}</div></section>
         ${d.done.length ? `<section class="panel"><div class="head"><h2>받은 것</h2></div><div class="list">${d.done.map((w) => `<div class="item"><span class="grow">🎁 <b>${esc(w.title)}</b><br><span class="sub">${esc(w.doneAt.slice(0, 10))} · 도장 ${w.stamps}개</span></span></div>`).join('')}</div></section>` : ''}
       </div>`;
+      initSliders(root);
     }
 
     function wishRowHtml(w) {
@@ -231,6 +273,7 @@ function mountParent(root) {
           <li>아이가 갖고 싶은 것을 적으면 도장 개수를 정해 주세요. 아이가 목표로 골라 도장을 다 모으면 "사 주세요"를 눌러요</li></ul>
         <form class="inline" id="rateForm"><label for="rateIn" class="nowrap">도장 1개 =</label><input id="rateIn" inputmode="numeric" value="${d.rate}" style="width:7em"><span>원</span><button class="small">저장</button></form>
         <p class="sub">도장 1개 값은 새로 적는 것의 도장 개수를 짐작할 때만 써요. 이미 정한 개수는 그대로예요.</p></section></div>`;
+    initSliders(root);
   }
 
   const after = (x, msg) => { d = x; setPending(x); draw(); if (msg) toast(msg); };

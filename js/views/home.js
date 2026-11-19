@@ -1,6 +1,6 @@
 // 🏠 홈: 가족 상태판, 내 상태 바꾸기, 오늘 일정
 import { call, peek } from '../api.js';
-import { goalCardHtml, kidsSummaryHtml, newStickers } from './stamps.js';
+import { goalCardHtml, kidsSummaryHtml, newStickers, initSliders } from './stamps.js';
 import { state, emit, unreadTotal } from '../state.js';
 import { esc, avatar, ago, fail, toast, dayKey } from '../ui.js';
 import { eventsCache, eventsOn, evRow } from '../events.js';
@@ -83,6 +83,7 @@ export default {
       if (key === lastStamps && !fresh) return;   // 같으면 다시 그리지 않아요 (스티커 붙는 움직임이 끊기지 않게)
       lastStamps = key;
       box.innerHTML = me.role === '아이' ? goalCardHtml(d, true, fresh) : kidsSummaryHtml(d);
+      initSliders(box);
     };
     // 공용 기기에서 사람이 바뀌는 중이면 예전 사람 것은 부르지 않아요
     // 아이: 새로 붙은 스티커는 홈에서도 꾹 붙는 움직임으로
