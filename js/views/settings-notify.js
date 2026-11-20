@@ -22,7 +22,12 @@ export function mountNotify(el) {
   let st = null, busy = false;
 
   async function load() {
-    try { st = await call('push.state'); if (st.deviceOn) markPushOn(true); draw(); } catch (e) { el.innerHTML = `<div class="sub">${esc(e.message)}</div>`; }
+    try {
+      st = await call('push.state'); if (st.deviceOn) markPushOn(true);
+      // 공용 기기: 예전에 정한 사람 대신 지금 고른 사람으로 맞춰요
+      if (state.device.kind === '공용' && state.me && (st.notifyFor.length !== 1 || st.notifyFor[0] !== state.me.id)) st = await call('push.device', [state.me.id]);
+      draw();
+    } catch (e) { el.innerHTML = `<div class="sub">${esc(e.message)}</div>`; }
   }
 
   function draw() {
@@ -34,11 +39,7 @@ export function mountNotify(el) {
         ${sup.ok ? (on ? '<button class="small" id="pTest">시험 알림</button><button class="small ghost" id="pOff">끄기</button>' : '<button class="primary small" id="pOn">알림 켜기</button>') : ''}</div>
       ${sup.ok ? '' : `<p class="sub">${esc(sup.reason)}</p>`}
       ${permission() === 'denied' ? '<p class="sub warn">이 기기에서 알림이 막혀 있어요. 휴대폰 설정 > 앱(또는 브라우저) > 알림에서 허용해 주세요.</p>' : ''}
-      ${state.device.kind === '공용' ? `<span class="label">이 기기에서 알림 받을 사람 <span class="sub">(아이들이 각자 휴대폰을 쓰면 빼 주세요)</span></span>
-        <div class="chips" id="pFor">${state.people.map((p) => {
-          const sel = st.notifyFor.length ? st.notifyFor.includes(p.id) : p.role === '아이';
-          return `<label class="chk"><input type="checkbox" value="${esc(p.id)}" ${sel ? 'checked' : ''}>${avatar(p, 20)} ${esc(p.name)}</label>`;
-        }).join('')}</div>` : ''}
+      ${state.device.kind === '공용' ? `<p class="sub">이 기기는 맨 위에서 고른 사람(지금: <b>${esc(me ? me.name : '아직 안 고름')}</b>)의 알림을 받아요. 사람을 바꾸면 알림도 그 사람 것으로 바뀌어요.</p>` : ''}
       ${me && st.prefs ? `<span class="label">${esc(me.name)}이(가) 받을 알림 <span class="sub">(모든 기기에 같이 적용돼요)</span></span>
         <div class="list" id="pPrefs">${items(me).map(([k, t, d]) => `<label class="item toggle"><span class="grow"><b>${t}</b><br><span class="sub">${d}</span></span>
           <input type="checkbox" data-pref="${k}" ${st.prefs[k] ? 'checked' : ''} role="switch"></label>`).join('')}</div>
