@@ -182,6 +182,8 @@ async function becomePerson(id, pin) {
     const r = await call('auth.check');
     state.me = r.me;
     state.v = null;
+    // 공용 기기(태블릿 등)는 지금 고른 사람의 알림을 받아요
+    call('push.device', [r.me.id]).catch(() => {});
     await syncNow();
     renderTop();
     remount();

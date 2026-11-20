@@ -5,8 +5,26 @@ import { IS_DEMO, FIREBASE, VAPID_KEY, PUSH_READY } from './config.js';
 
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2/';
 
+// 공용 태블릿 앱(APK) 안에서 열렸으면 앱이 알림을 직접 받아요 (window.FamilyBoardTablet)
+const TABLET = typeof window !== 'undefined' && window.FamilyBoardTablet && typeof window.FamilyBoardTablet.requestPushToken === 'function'
+  ? window.FamilyBoardTablet : null;
+
+/** 태블릿 앱에게 알림 주소를 달라고 해요. 허용을 아직 안 했으면 앱이 물어봐요 */
+function tabletToken(ask) {
+  return new Promise((ok, fail) => {
+    const t = setTimeout(() => fail(new Error('태블릿 앱에서 알림 주소를 받지 못했어요. 잠시 후 다시 해 주세요.')), 60000);
+    window.__fbTabletToken = (token, err) => {
+      clearTimeout(t);
+      if (token) ok(token);
+      else fail(new Error(err === 'denied' ? '알림이 막혀 있어요. 태블릿 설정 > 애플리케이션 > 가족 보드 > 알림에서 허용해 주세요.' : '알림 주소를 받지 못했어요. (' + (err || '') + ')'));
+    };
+    TABLET.requestPushToken(!!ask);
+  });
+}
+
 /** 이 기기가 알림을 받을 수 있는지. { ok, reason } */
 export function pushSupport() {
+  if (TABLET) return { ok: true };
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   if (ios && !standalone) return { ok: false, reason: '아이폰은 Safari 공유 버튼 → "홈 화면에 추가"로 설치한 가족 보드에서만 알림을 받을 수 있어요. 홈 화면 아이콘으로 열어 주세요.' };
@@ -17,7 +35,7 @@ export function pushSupport() {
   return { ok: true };
 }
 
-export const permission = () => ('Notification' in window ? Notification.permission : 'denied');
+export const permission = () => (TABLET ? TABLET.permission() : 'Notification' in window ? Notification.permission : 'denied');
 
 function loadScript(src) {
   return new Promise((ok, fail) => {
@@ -30,6 +48,7 @@ function loadScript(src) {
 
 /** Firebase에서 이 기기의 알림 주소(토큰)를 받아요 (알림 허용이 된 다음에) */
 async function getPushToken() {
+  if (TABLET) return tabletToken(false);
   const reg = await navigator.serviceWorker.register('sw.js');
   await navigator.serviceWorker.ready;
   await loadScript(SDK + 'firebase-app-compat.js');
@@ -42,9 +61,13 @@ async function getPushToken() {
 /** 알림 켜기: 허용을 물어보고, Firebase에서 이 기기 주소(토큰)를 받아 서버에 저장해요. 버튼을 눌렀을 때 불러야 해요. */
 export async function enablePush() {
   if (IS_DEMO) return call('push.register', 'demo-token');
-  const perm = await Notification.requestPermission();
-  if (perm !== 'granted') throw new Error(perm === 'denied' ? '알림이 막혀 있어요. 휴대폰 설정 > 앱(또는 브라우저) > 알림에서 허용해 주세요.' : '알림 허용을 눌러 주세요.');
-  const token = await getPushToken();
+  let token;
+  if (TABLET) token = await tabletToken(true);
+  else {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error(perm === 'denied' ? '알림이 막혀 있어요. 휴대폰 설정 > 앱(또는 브라우저) > 알림에서 허용해 주세요.' : '알림 허용을 눌러 주세요.');
+    token = await getPushToken();
+  }
   if (!token) throw new Error('알림 주소를 받지 못했어요. 잠시 후 다시 해 주세요.');
   const st = await call('push.register', token);
   store.set('fb.pushOn', '1');
@@ -81,6 +104,9 @@ export function markPushOn(on) { store.set('fb.pushOn', on ? '1' : '0'); }
 
 /** 앱이 열려 있을 때 온 알림: 화면을 새로 고치고, 알림을 눌렀으면 그 메뉴로 */
 export function listenPush({ onPush, onGo }) {
+  // 태블릿 앱: 알림이 오거나 알림을 눌렀을 때 앱이 이 함수를 불러요
+  window.__fbTabletPush = (d) => { if (onPush) onPush(d || {}); };
+  window.__fbTabletGo = (url) => { if (onGo) onGo(url || '#home'); };
   if (!('serviceWorker' in navigator)) return;
   navigator.serviceWorker.addEventListener('message', (e) => {
     const m = e.data || {};
