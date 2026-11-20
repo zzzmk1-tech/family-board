@@ -439,6 +439,12 @@ button.mitem:active { transform: scale(.98); }
 .hl { display: flex; justify-content: space-between; font-size: 14px; }
 .hbar { height: 8px; border-radius: 4px; background: var(--surface2); overflow: hidden; }
 .hbar > i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.settle-card { background: var(--surface2); border-radius: 14px; padding: 12px 14px; display: grid; gap: 6px; margin: 8px 0; }
+.settle-card .hl { align-items: baseline; }
+.settle-line { border-top: 1px solid var(--line); margin: 2px 0; }
+.settle-due { font-size: 22px; color: var(--accent); }
+.btag.ok { background: var(--accent); color: #fff; }
+p.warn { color: var(--danger); }
 .tablewrap { overflow-x: auto; }
 .btable { width: 100%; border-collapse: collapse; font-size: 14px; }
 .btable td { padding: 7px 4px; border-bottom: 1px solid var(--line); }
