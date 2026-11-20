@@ -27,7 +27,7 @@ export default {
 
     root.innerHTML = `<div class="seg" role="tablist" id="tabs">
         <button role="tab" data-tab="add">입력</button><button role="tab" data-tab="list">내역</button>
-        <button role="tab" data-tab="sum">요약</button><button role="tab" data-tab="set">설정</button></div>
+        <button role="tab" data-tab="sum">요약</button><button role="tab" data-tab="settle">정산</button><button role="tab" data-tab="set">설정</button></div>
       <div id="body" class="view-body"><div class="sub">불러오는 중…</div></div>`;
     const body = root.querySelector('#body');
 
@@ -37,6 +37,7 @@ export default {
       if (tab === 'add') drawAdd({});
       else if (tab === 'list') loadList();
       else if (tab === 'sum') loadSum();
+      else if (tab === 'settle') loadSettle();
       else loadSet();
     }
 
@@ -212,6 +213,9 @@ export default {
         <label for="fMemo">내용 <span class="sub">(선택)</span></label><input id="fMemo" maxlength="60" placeholder="예: 이마트, 우재 책가방" value="${esc(tx.memo || '')}">
         <span class="label">결제수단</span>
         <div class="chips">${init.payments.map((p) => `<button type="button" data-pay="${esc(p)}" class="${lastPay === p ? 'on' : ''}">${esc(p)}</button>`).join('')}</div>
+        <span class="label">누구를 위한 지출인가요? <span class="sub">(생활비 정산)</span></span>
+        <div class="chips life-pick"><button type="button" data-life="0" class="${tx.personal ? '' : 'on'}">생활비</button><button type="button" data-life="1" class="${tx.personal ? 'on' : ''}">내 개인</button></div>
+        <p class="sub" id="fLifeMsg">${tx.personal ? '내 개인 지출이에요. 정산에서 빠져요.' : '생활비예요. 정산에 들어가요.'}</p>
         <button class="primary big-btn">${editing ? '수정하기' : '저장하기'}</button>
         ${editing ? '<button type="button" class="danger big-btn" id="fDel">삭제하기</button>' : ''}
       </form>`;
@@ -223,10 +227,11 @@ export default {
       amt.addEventListener('input', preview);
       preview();
       box.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-cat],[data-pay]');
+        const b = e.target.closest('[data-cat],[data-pay],[data-life]');
         if (!b) return;
-        const kind = b.dataset.cat !== undefined ? 'cat' : 'pay';
+        const kind = b.dataset.cat !== undefined ? 'cat' : b.dataset.pay !== undefined ? 'pay' : 'life';
         box.querySelectorAll(`[data-${kind}]`).forEach((x) => x.classList.toggle('on', x === b));
+        if (kind === 'life') box.querySelector('#fLifeMsg').textContent = b.dataset.life === '1' ? '내 개인 지출이에요. 정산에서 빠져요.' : '생활비예요. 정산에 들어가요.';
       });
       box.querySelector('form').onsubmit = async (e) => {
         e.preventDefault();
@@ -234,14 +239,15 @@ export default {
         if (!v) { toast('금액을 입력해 주세요'); return; }
         if (!cat) { toast('카테고리를 골라 주세요'); return; }
         if (pay) store.set('fb.lastPay', pay.dataset.pay);
+        const life = box.querySelector('[data-life].on');
         const row = { id: tx ? tx.id : '', amount: amt.value, category: cat.dataset.cat, date: box.querySelector('#fDate').value,
-          memo: box.querySelector('#fMemo').value, payment: pay ? pay.dataset.pay : '' };
+          memo: box.querySelector('#fMemo').value, payment: pay ? pay.dataset.pay : '', personal: !!life && life.dataset.life === '1' };
         if (!tx) {
           // 새로 쓰기: 바로 '저장했어요'하고 빈 칸으로 돌려놓고, 저장은 뒤에서. 실패하면 적은 내용을 다시 채워요
           toast(`${won(v)} 저장했어요`);
           drawAdd({});
           try { await call('budget.save', row); } catch (err) {
-            if (tab === 'add') drawAdd({ amount: row.amount, date: row.date, memo: row.memo, payment: row.payment, category: row.category });
+            if (tab === 'add') drawAdd({ amount: row.amount, date: row.date, memo: row.memo, payment: row.payment, category: row.category, personal: row.personal });
             fail(new Error('저장하지 못했어요. 적은 내용을 다시 채워 두었어요: ' + (err.message || '')));
           }
           return;
@@ -291,16 +297,90 @@ export default {
         rows += `<button class="tx" data-tx="${esc(t.id)}"><div class="grow"><div class="m">${esc(t.memo || t.category)}</div>
           <div class="c">${esc(t.category)}${t.payment ? ' · ' + esc(t.payment) : ''}${t.member ? ' · ' + esc(who(t.member)) : ''}
           ${t.source === '자동' ? '<span class="btag">자동</span>' : ''}${t.source === '고정비' ? '<span class="btag">고정비</span>' : ''}${t.source === '가져오기' ? '<span class="btag">엑셀</span>' : ''}
-          ${t.category === '미분류' ? '<span class="btag warn">분류 필요</span>' : ''}</div></div><div class="a num">${won(t.amount)}</div></button>`;
+          ${t.category === '미분류' ? '<span class="btag warn">분류 필요</span>' : ''}${t.personal ? '<span class="btag">개인</span>' : ''}</div></div><div class="a num">${won(t.amount)}</div></button>`;
       });
       body.innerHTML = `${monthBar()}
         <div class="stat"><b class="num">${won(total)}</b><span class="sub">${items.length}건${unc ? ` · 분류가 필요한 내역 ${unc}건` : ''}</span></div>
         <div class="chips">${members.map((m) => `<button data-filter="${esc(m)}" class="${filter === m ? 'on' : ''}">${esc(m === '전체' || m === '미분류' ? m : who(m))}</button>`).join('')}</div>
         <div class="txlist">${hiddenRows}${rows || (hiddenRows ? '' : '<div class="empty">내역이 없어요</div>')}</div>`;
     }
-    function openEdit(t) {
+    function openEdit(t, after = loadList) {
       const md = modal('내역 수정', formHtml(t));
-      wireForm(md.el, t, () => { md.close(); loadList(); });
+      wireForm(md.el, t, () => { md.close(); after(); });
+    }
+
+    /* ---------- 생활비 정산 ---------- */
+    // 매달 초에 지난달을 정산해요. 그래서 처음엔 지난달이 보여요
+    let sYm = (() => { const d = parseDay(dayKey().slice(0, 7) + '-01'); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
+    let sv = null;
+    const mLabel = (k) => `${Number(k.slice(5))}월`;
+    const atLabel = (at) => (at ? `${Number(at.slice(5, 7))}/${Number(at.slice(8, 10))}` : '');
+    async function loadSettle() {
+      const c = peek('budget.settleView', sYm);
+      if (c) { sv = c; drawSettle(); } else body.innerHTML = settleBar() + '<div class="sub">불러오는 중…</div>';
+      try { sv = await call('budget.settleView', sYm); if (tab === 'settle') drawSettle(); } catch (e) { fail(e); }
+    }
+    function settleBar() {
+      return `<div class="monthbar"><button class="cal-nav" data-smv="-1" aria-label="이전 달">‹</button><b>${ymLabel(sYm)} 정산</b>
+        <button class="cal-nav" data-smv="1" aria-label="다음 달">›</button></div>`;
+    }
+    const catRows = (cats) => cats.map((x) => `<div class="hl"><span>${esc(x.name)}</span><span class="num">${won(x.amount)}</span></div>`).join('');
+    const sumCard = (s, giver) => `<div class="settle-card">
+        <div class="hl"><span>생활비로 쓴 돈 <span class="sub">${s.count}건</span></span><b class="num">${won(s.spent)}</b></div>
+        <div class="hl sub"><span>미리 ${giver ? '준' : '받은'} 생활비</span><span class="num">− ${won(s.advance)}</span></div>
+        <div class="settle-line"></div>
+        <div class="hl"><span>${s.due >= 0 ? (giver ? '보내 줄 돈' : '더 받을 돈') : (giver ? '돌려받을 돈' : '돌려줄 돈')}</span><b class="num settle-due">${won(Math.abs(s.due))}</b></div></div>`;
+    const txRows = (items) => items.map((t) => `<button class="tx" data-stx="${esc(t.id)}"><div class="grow"><div class="m">${esc(t.memo || t.category)}</div>
+        <div class="c">${esc(t.date.slice(5).replace('-', '/'))} · ${esc(t.category)}${t.source === '고정비' ? ' <span class="btag">고정비</span>' : ''}</div></div><div class="a num">${won(t.amount)}</div></button>`).join('');
+
+    function drawSettle() {
+      if (!sv || sv.ym !== sYm) return;
+      const k = sv.calc, mine = sv.mine, others = sv.others.filter((s) => s.ym === sYm);
+      const changed = mine && (mine.spent !== k.spent || mine.advance !== k.advance);
+      const showMine = !!mine || sv.advanceDefault > 0;
+      let html = settleBar();
+      if (showMine) {
+        html += `<section class="panel"><div class="hl"><h2>내 생활비 정산</h2>${mine ? `<span class="btag ok">정산 끝 · ${atLabel(mine.at)}</span>` : '<span class="sub">아직 안 함</span>'}</div>
+          ${sumCard(mine && !changed ? mine : k, false)}
+          ${changed ? `<p class="sub warn">정산한 뒤 내역이 바뀌었어요. 정산한 금액은 ${won(Math.abs(mine.due))}, 지금 계산은 ${won(Math.abs(k.due))}이에요. 맞추려면 '정산 다시 하기'를 눌러 주세요.</p>` : ''}
+          <label class="row" style="gap:8px;align-items:center"><span class="sub">이 달 미리 받은 생활비</span>
+            <input id="sAdv" class="num" inputmode="numeric" style="max-width:150px" value="${esc(String(k.advance))}"></label>
+          ${k.personalCount ? `<details class="guide"><summary>개인 지출 ${k.personalCount}건 (${won(k.personalSum)})은 뺐어요</summary><div class="txlist">${txRows(k.personal)}</div></details>` : ''}
+          <details class="guide"><summary>생활비 내역 ${k.count}건 보기</summary>
+            <div class="stack" style="margin:8px 0">${catRows(k.cats) || '<div class="empty">생활비 내역이 없어요</div>'}</div>
+            <div class="txlist">${txRows(k.life)}</div><p class="sub">내역을 누르면 고치거나 '내 개인'으로 바꿀 수 있어요.</p></details>
+          ${k.commonCount ? `<details class="guide"><summary>누가 냈는지 안 정한 공통 지출 ${k.commonCount}건 (${won(k.commonSum)})은 빠졌어요</summary>
+            <p class="sub">내 통장에서 나간 것이면 '내가 냈어요'를 누르세요. 고정비는 설정 → 고정비에서 '누구 통장'을 정해 두면 다음 달부터 저절로 들어가요.</p>
+            <div class="list">${k.common.map((t) => `<div class="item"><div class="grow">${esc(t.memo || t.category)}<br><span class="sub">${esc(t.date.slice(5).replace('-', '/'))} · ${esc(t.category)}</span></div>
+              <b class="num">${won(t.amount)}</b><button class="small" data-claim="${esc(t.id)}">내가 냈어요</button></div>`).join('')}</div></details>` : ''}
+          <button class="primary big-btn" id="sGo">${mine ? '정산 다시 하기' : `${mLabel(sYm)} 정산하기`}</button>
+          <p class="sub">누르면 지금 금액으로 정해지고, 다른 가족(엄마·아빠)에게 알림이 가요.</p></section>`;
+      }
+      if (others.length) {
+        html += others.map((s) => `<section class="panel"><div class="hl"><h2>${esc(who(s.personId))}의 ${mLabel(s.ym)} 생활비 정산</h2><span class="sub">${atLabel(s.at)}</span></div>
+          ${sumCard(s, true)}
+          ${s.cats.length ? `<div class="stack" style="margin-top:8px"><span class="label">카테고리별</span>${catRows(s.cats)}</div>` : ''}
+          ${s.personalCount ? `<p class="sub">개인 지출 ${s.personalCount}건은 빠졌어요.</p>` : ''}</section>`).join('');
+      } else if (!showMine) {
+        html += `<div class="empty">${mLabel(sYm)} 정산이 아직 오지 않았어요.</div>
+          <p class="sub">생활비를 받는 쪽이면 설정 → 생활비 정산에 매달 미리 받는 금액을 적어 주세요. 그러면 여기서 정산할 수 있어요.</p>`;
+      }
+      const past = sv.others.filter((s) => s.ym !== sYm);
+      if (past.length) html += `<section class="panel"><h2>지난 정산</h2><div class="list">${past.map((s) => `<button class="item" data-sym="${esc(s.ym)}"><span class="grow">${esc(ymLabel(s.ym))} · ${esc(who(s.personId))}</span><b class="num">${won(s.due)}</b></button>`).join('')}</div></section>`;
+      body.innerHTML = html;
+      if (sv.others[0]) store.set('fb.seenSettle', sv.others[0].id + '@' + sv.others[0].at);
+    }
+    async function doSettle(btn) {
+      const adv = calc(body.querySelector('#sAdv').value || '0');
+      if (adv == null || adv < 0) { toast('미리 받은 생활비를 숫자로 적어 주세요'); return; }
+      if (!armed(btn, `${mLabel(sYm)} 정산할까요? 다른 가족에게 알림이 가요`)) return;
+      btn.disabled = true;
+      try {
+        await call('budget.settle', sYm, adv);
+        toast(`${mLabel(sYm)} 정산을 보냈어요`);
+        sv = await call('budget.settleView', sYm);
+        drawSettle();
+      } catch (e) { fail(e); btn.disabled = false; }
     }
 
     /* ---------- 요약 ---------- */
@@ -344,6 +424,10 @@ export default {
       const groups = {};
       set.categories.forEach((c) => { const k = c.type + '|' + c.group; (groups[k] = groups[k] || []).push(c); });
       body.innerHTML = `
+        <section class="panel"><h2>생활비 정산</h2>
+          <p class="sub">생활비를 받는 쪽만 적어요. 매달 미리 받는 생활비를 적어 두면, 정산 탭에서 '생활비로 쓴 돈 − 이 금액'을 계산해요.</p>
+          <div class="copy"><input id="advIn" class="num" inputmode="numeric" placeholder="예: 2000000" value="${set.advance ? esc(String(set.advance)) : ''}" aria-label="매달 미리 받는 생활비"><button id="advSave">저장</button></div>
+          ${set.advance ? `<p class="sub">지금: 매달 ${won(set.advance)}</p>` : ''}</section>
         <section class="panel"><h2>내 내역 공개</h2>
           <label class="chk"><input type="checkbox" id="openTog" ${set.open ? 'checked' : ''}> 다른 가족에게 내 건별 내역 보여주기</label>
           <p class="sub">끄면 다른 가족에게는 내 지출이 합계로만 보여요.</p></section>
@@ -378,7 +462,7 @@ export default {
           <button class="add-btn" id="catAdd">+ 카테고리 추가</button></section>
         <section class="panel"><h2>고정비</h2><p class="sub">결제일이 되면 매달 자동으로 기록돼요. 다른 가족의 개인 고정비는 보이지 않아요.</p>
           <div class="list">${set.fixed.length ? set.fixed.map((f, i) => `<div class="item${f.on ? '' : ' off'}"><div class="grow"><b>${esc(f.name)}</b> <span class="btag">${esc(f.owner === '공통' ? '공통' : who(f.owner))}</span>
-            <br><span class="sub">${esc(f.category)} · 매달 ${f.day}일${f.on ? '' : ' · 사용 안 함'}</span></div><b class="num">${won(f.amount)}</b>
+            <br><span class="sub">${esc(f.category)} · 매달 ${f.day}일${f.owner === '공통' ? ` · ${f.payer ? esc(who(f.payer)) + ' 통장' : '내는 사람 안 정함'}` : f.personal ? ' · 개인' : ''}${f.on ? '' : ' · 사용 안 함'}</span></div><b class="num">${won(f.amount)}</b>
             <button class="small" data-fix-edit="${i}">수정</button></div>`).join('') : '<div class="empty">등록된 고정비가 없어요</div>'}</div>
           <button class="add-btn" data-fix-edit="-1">+ 고정비 추가</button></section>`;
     }
@@ -433,15 +517,20 @@ export default {
         <label for="xp">결제수단</label><select id="xp"><option value="">선택 안 함</option>${set.payments.map((p) => `<option ${p.name === f.payment ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
         <label for="xo">누구 것인가요?</label><select id="xo"><option value="me" ${f.owner !== '공통' ? 'selected' : ''}>${esc(who(set.me))} (나만 보기)</option>
           <option value="공통" ${f.owner === '공통' ? 'selected' : ''}>공통 (가족 모두 보기)</option></select>
+        <div id="xPayBox" class="stack" ${f.owner === '공통' ? '' : 'hidden'}><label for="xpy">누구 통장에서 나가요? <span class="sub">(생활비 정산)</span></label>
+          <select id="xpy"><option value="">정하지 않음 (정산에서 빠져요)</option>${init.members.map((m) => `<option value="${esc(m.id)}" ${f.payer === m.id ? 'selected' : ''}>${esc(m.name)} 통장</option>`).join('')}</select></div>
+        <label class="chk" id="xPerBox" ${f.owner === '공통' ? 'hidden' : ''}><input type="checkbox" id="xper" ${f.personal ? 'checked' : ''}> 내 개인 지출 (생활비 정산에서 빼기)</label>
         <label class="chk"><input type="checkbox" id="xon" ${f.on ? 'checked' : ''}> 매달 자동으로 기록하기</label>
         <div class="row end">${i >= 0 ? '<button type="button" class="danger" id="xdel">삭제하기</button>' : ''}<button class="primary">저장하기</button></div></form>`);
       const el = md.el;
+      el.querySelector('#xo').onchange = (e) => { el.querySelector('#xPayBox').hidden = e.target.value !== '공통'; el.querySelector('#xPerBox').hidden = e.target.value === '공통'; };
       el.querySelector('#ff').onsubmit = async (e) => {
         e.preventDefault();
         if (calc(el.querySelector('#xa').value) == null) { toast('금액을 입력해 주세요'); return; }
         try {
           const d = await call('budget.saveFixed', { id: f.id, name: el.querySelector('#xn').value, amount: el.querySelector('#xa').value, day: el.querySelector('#xd').value,
-            category: el.querySelector('#xc').value, payment: el.querySelector('#xp').value, owner: el.querySelector('#xo').value === '공통' ? '공통' : set.me, on: el.querySelector('#xon').checked });
+            category: el.querySelector('#xc').value, payment: el.querySelector('#xp').value, owner: el.querySelector('#xo').value === '공통' ? '공통' : set.me, on: el.querySelector('#xon').checked,
+            payer: el.querySelector('#xpy').value, personal: el.querySelector('#xper').checked });
           md.close(); afterSet(d, '저장했어요');
         } catch (err) { fail(err); }
       };
@@ -461,6 +550,24 @@ export default {
         const d = parseDay(ym + '-01'); d.setMonth(d.getMonth() + Number(mv.dataset.mv));
         ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
         return tab === 'list' ? loadList() : loadSum();
+      }
+      const smv = t.closest('[data-smv]');
+      if (smv) {
+        const d = parseDay(sYm + '-01'); d.setMonth(d.getMonth() + Number(smv.dataset.smv));
+        sYm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return loadSettle();
+      }
+      const sym = t.closest('[data-sym]'); if (sym) { sYm = sym.dataset.sym; loadSettle(); return; }
+      const stx = t.closest('[data-stx]');
+      if (stx) { const k = sv.calc; const x = k.life.concat(k.personal).find((y) => y.id === stx.dataset.stx); if (x) openEdit(x, loadSettle); return; }
+      if (t.closest('#sGo')) { doSettle(t.closest('#sGo')); return; }
+      const cl = t.closest('[data-claim]');
+      if (cl) { cl.disabled = true; try { await call('budget.claim', cl.dataset.claim); toast('내 생활비에 넣었어요'); loadSettle(); } catch (err) { fail(err); cl.disabled = false; } return; }
+      if (t.closest('#advSave')) {
+        const v = calc(body.querySelector('#advIn').value || '0');
+        if (v == null || v < 0) { toast('금액을 숫자로 적어 주세요'); return; }
+        try { afterSet(await call('budget.saveAdvance', v), '저장했어요'); } catch (err) { fail(err); }
+        return;
       }
       const fl = t.closest('[data-filter]'); if (fl) { filter = fl.dataset.filter; drawList(); return; }
       const tx = t.closest('[data-tx]'); if (tx) { openEdit(list.items.find((x) => x.id === tx.dataset.tx)); return; }
@@ -491,7 +598,13 @@ export default {
 
     // 지난번에 받은 목록(카테고리·결제수단)이 있으면 입력 칸을 바로 보여줘요
     init = peek('budget.init');
-    call('budget.init').then((d) => { const first = !init; init = d; if (first) draw(); }).catch(fail);
+    // 다른 엄마·아빠가 새로 정산을 보냈으면 정산 탭을 먼저 보여줘요
+    const newSettle = (d) => d && d.lastSettle && d.lastSettle !== store.get('fb.seenSettle');
+    if (newSettle(init)) tab = 'settle';
+    call('budget.init').then((d) => {
+      const first = !init; init = d;
+      if (newSettle(d) && tab !== 'settle') { tab = 'settle'; draw(); } else if (first) draw();
+    }).catch(fail);
     draw();
     return null;
   },
