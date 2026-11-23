@@ -58,7 +58,9 @@ export default {
             <label class="add-btn" style="text-align:center;cursor:pointer">엑셀 파일 고르기<input type="file" id="importFile" accept=".xlsx,.xls,.csv,text/csv" hidden></label>
           </div></details>
         <section class="panel" id="addBox">${formHtml(prefill)}</section>`;
-      wireForm(body.querySelector('#addBox'), null);
+      const addBox = body.querySelector('#addBox');
+      addBox.dataset.prefillCat = prefill.category || '';
+      wireForm(addBox, null);
       body.querySelector('#importFile').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) openImport(f); };
       const box = body.querySelector('#pasteBox');
       box.querySelector('#pasteClip').onclick = async () => {
@@ -197,26 +199,54 @@ export default {
     }
 
     /* ---------- 입력 폼 (새로 쓰기·고치기 같이 써요) ---------- */
+    /* 카테고리 고르기: 자주 쓰는 것 6개 + 대분류를 누르면 펼쳐지는 나머지 + 가게 이름 보고 미리 고르기 */
+    const DEFAULT_FAV = ['식료품', '외식', '교육(소율)', '교육(우재)', '생활용품(어린이)', '교통비'];
+    const catNames = () => init.categories.filter((c) => c.name !== '미분류').map((c) => c.name);
+    const catUse = () => { try { const o = JSON.parse(store.get('fb.catUse') || '{}'); return o && typeof o === 'object' ? o : {}; } catch (e) { return {}; } };
+    function favCats(sel) {
+      const use = catUse(), names = catNames();
+      let fav = names.filter((n) => use[n]).sort((a, b) => use[b] - use[a]).slice(0, 6);
+      for (const n of DEFAULT_FAV) { if (fav.length >= 6) break; if (names.includes(n) && !fav.includes(n)) fav.push(n); }
+      for (const n of names) { if (fav.length >= 6) break; if (!fav.includes(n)) fav.push(n); }
+      if (sel && !fav.includes(sel)) fav = [sel, ...fav.slice(0, 5)];
+      return fav;
+    }
+    function countCat(name) { const use = catUse(); use[name] = (use[name] || 0) + 1; store.set('fb.catUse', JSON.stringify(use)); }
+    function guessCat(memo) {
+      const m = String(memo || '').toUpperCase();
+      if (!m) return null;
+      const rules = (init.rules || []).slice().sort((a, b) => b[0].length - a[0].length);
+      const r = rules.find(([w]) => w && m.includes(String(w).toUpperCase()));
+      return r && catNames().includes(r[1]) ? r : null;
+    }
+    const catGroups = () => {
+      const g = [];
+      init.categories.forEach((c) => { if (c.name === '미분류') return; let x = g.find((y) => y.name === c.group); if (!x) { x = { name: c.group, items: [] }; g.push(x); } x.items.push(c.name); });
+      return g;
+    };
+    const catSelect = (sel) => `<option value="">카테고리</option>` + catGroups().map((g) => `<optgroup label="${esc(g.name)}">${g.items.map((n) =>
+      `<option ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('')}</optgroup>`).join('');
+
     function formHtml(tx) {
       const editing = !!tx.id;
-      const groups = {};
-      init.categories.forEach((c) => { if (c.name === '미분류' && !editing) return; (groups[c.group] = groups[c.group] || []).push(c.name); });
       const lastPay = tx.payment || store.get('fb.lastPay') || '';
       return `<form class="stack bform">
         <label for="fAmount">금액 <span class="sub">(1200+1980처럼 더하기 가능)</span></label>
         <input class="amount num" id="fAmount" inputmode="text" autocomplete="off" placeholder="0" value="${esc(tx.amount ?? '')}">
         <div class="preview num" id="fPreview"></div>
-        <span class="label">카테고리</span>
-        ${Object.keys(groups).map((g) => `<div class="grp">${esc(g)}</div><div class="chips">${groups[g].map((n) =>
-          `<button type="button" data-cat="${esc(n)}" class="${tx.category === n ? 'on' : ''}">${esc(n)}</button>`).join('')}</div>`).join('')}
+        <label for="fMemo">내용 <span class="sub">(가게 이름을 맨 앞에. 예: 이마트 장보기)</span></label><input id="fMemo" maxlength="60" placeholder="예: 이마트, 소율 수학학원" value="${esc(tx.memo || '')}">
+        <span class="label">카테고리 <span class="sub" id="fCatHint">· 자주 쓰는 것</span></span>
+        <div class="chips" id="fFav"></div>
+        <div class="chips cat-groups" id="fGroups"></div>
+        <div class="chips" id="fSub"></div>
         <label for="fDate">날짜</label><input type="date" id="fDate" value="${esc(tx.date || dayKey())}">
-        <label for="fMemo">내용 <span class="sub">(선택)</span></label><input id="fMemo" maxlength="60" placeholder="예: 이마트, 우재 책가방" value="${esc(tx.memo || '')}">
         <span class="label">결제수단</span>
         <div class="chips">${init.payments.map((p) => `<button type="button" data-pay="${esc(p)}" class="${lastPay === p ? 'on' : ''}">${esc(p)}</button>`).join('')}</div>
         <span class="label">누구를 위한 지출인가요? <span class="sub">(생활비 정산)</span></span>
         <div class="chips life-pick"><button type="button" data-life="0" class="${tx.personal ? '' : 'on'}">생활비</button><button type="button" data-life="1" class="${tx.personal ? 'on' : ''}">내 개인</button></div>
         <p class="sub" id="fLifeMsg">${tx.personal ? '내 개인 지출이에요. 정산에서 빠져요.' : '생활비예요. 정산에 들어가요.'}</p>
         <button class="primary big-btn">${editing ? '수정하기' : '저장하기'}</button>
+        ${editing ? '<button type="button" class="big-btn" id="fSplit">나눠서 기록하기 <span class="sub">(식료품+생활용품, 소율+우재 등)</span></button>' : ''}
         ${editing ? '<button type="button" class="danger big-btn" id="fDel">삭제하기</button>' : ''}
       </form>`;
     }
@@ -226,19 +256,43 @@ export default {
       const preview = () => { const v = calc(amt.value); prev.textContent = v == null || !amt.value ? '' : `= ${won(v)}`; };
       amt.addEventListener('input', preview);
       preview();
+      // 카테고리: sel = 고른 것, manual = 직접 눌렀는지(그러면 가게 이름으로 바꾸지 않아요), open = 펼친 대분류
+      const start = tx && tx.category && tx.category !== '미분류' ? tx.category : (tx ? '' : box.dataset.prefillCat || '');
+      let sel = start, manual = !!start, open = '';
+      const hint = box.querySelector('#fCatHint');
+      function drawCats() {
+        const chip = (n) => `<button type="button" data-cat="${esc(n)}" class="${n === sel ? 'on' : ''}">${esc(n)}</button>`;
+        box.querySelector('#fFav').innerHTML = favCats(sel).map(chip).join('');
+        box.querySelector('#fGroups').innerHTML = catGroups().map((g) => `<button type="button" class="grp-btn${g.name === open ? ' on' : ''}" data-grp="${esc(g.name)}">${esc(g.name)} ${g.name === open ? '▴' : '▾'}</button>`).join('');
+        const g = catGroups().find((x) => x.name === open);
+        box.querySelector('#fSub').innerHTML = g ? g.items.map(chip).join('') : '';
+      }
+      drawCats();
+      box.querySelector('#fMemo').addEventListener('input', (e) => {
+        if (manual) return;
+        const r = guessCat(e.target.value);
+        if (r && r[1] !== sel) { sel = r[1]; hint.textContent = `· '${r[0]}' 보고 골랐어요`; drawCats(); }
+      });
       box.addEventListener('click', (e) => {
+        const gb = e.target.closest('[data-grp]');
+        if (gb) { open = open === gb.dataset.grp ? '' : gb.dataset.grp; drawCats(); return; }
         const b = e.target.closest('[data-cat],[data-pay],[data-life]');
         if (!b) return;
-        const kind = b.dataset.cat !== undefined ? 'cat' : b.dataset.pay !== undefined ? 'pay' : 'life';
+        if (b.dataset.cat !== undefined) { sel = b.dataset.cat; manual = true; open = ''; hint.textContent = '· 자주 쓰는 것'; drawCats(); return; }
+        const kind = b.dataset.pay !== undefined ? 'pay' : 'life';
         box.querySelectorAll(`[data-${kind}]`).forEach((x) => x.classList.toggle('on', x === b));
         if (kind === 'life') box.querySelector('#fLifeMsg').textContent = b.dataset.life === '1' ? '내 개인 지출이에요. 정산에서 빠져요.' : '생활비예요. 정산에 들어가요.';
       });
+      const sp = box.querySelector('#fSplit');
+      if (sp) sp.onclick = () => openSplit(tx, onDone);
       box.querySelector('form').onsubmit = async (e) => {
         e.preventDefault();
-        const v = calc(amt.value), cat = box.querySelector('[data-cat].on'), pay = box.querySelector('[data-pay].on');
+        const v = calc(amt.value), pay = box.querySelector('[data-pay].on');
         if (!v) { toast('금액을 입력해 주세요'); return; }
-        if (!cat) { toast('카테고리를 골라 주세요'); return; }
+        if (!sel) { toast('카테고리를 골라 주세요'); return; }
         if (pay) store.set('fb.lastPay', pay.dataset.pay);
+        countCat(sel);
+        const cat = { dataset: { cat: sel } };
         const life = box.querySelector('[data-life].on');
         const row = { id: tx ? tx.id : '', amount: amt.value, category: cat.dataset.cat, date: box.querySelector('#fDate').value,
           memo: box.querySelector('#fMemo').value, payment: pay ? pay.dataset.pay : '', personal: !!life && life.dataset.life === '1' };
@@ -297,7 +351,7 @@ export default {
         rows += `<button class="tx" data-tx="${esc(t.id)}"><div class="grow"><div class="m">${esc(t.memo || t.category)}</div>
           <div class="c">${esc(t.category)}${t.payment ? ' · ' + esc(t.payment) : ''}${t.member ? ' · ' + esc(who(t.member)) : ''}
           ${t.source === '자동' ? '<span class="btag">자동</span>' : ''}${t.source === '고정비' ? '<span class="btag">고정비</span>' : ''}${t.source === '가져오기' ? '<span class="btag">엑셀</span>' : ''}
-          ${t.category === '미분류' ? '<span class="btag warn">분류 필요</span>' : ''}${t.personal ? '<span class="btag">개인</span>' : ''}</div></div><div class="a num">${won(t.amount)}</div></button>`;
+          ${t.category === '미분류' ? '<span class="btag warn">분류 필요</span>' : ''}${t.personal ? '<span class="btag">개인</span>' : ''}${t.splitId ? '<span class="btag">나눔</span>' : ''}</div></div><div class="a num">${won(t.amount)}</div></button>`;
       });
       body.innerHTML = `${monthBar()}
         <div class="stat"><b class="num">${won(total)}</b><span class="sub">${items.length}건${unc ? ` · 분류가 필요한 내역 ${unc}건` : ''}</span></div>
@@ -307,6 +361,60 @@ export default {
     function openEdit(t, after = loadList) {
       const md = modal('내역 수정', formHtml(t));
       wireForm(md.el, t, () => { md.close(); after(); });
+    }
+
+    /* ---------- 나눠서 기록하기: 한 번 결제한 것을 여러 카테고리(생활비/개인)로 ---------- */
+    function openSplit(t, onDone) {
+      const parts = [{ amount: '', category: t.category === '미분류' ? '' : t.category, personal: !!t.personal }, { amount: '', category: '', personal: !!t.personal }];
+      const md = modal('나눠서 기록하기', '<div id="spBody" class="stack"></div>', { wide: true });
+      const box = md.el.querySelector('#spBody');
+      const sumOf = () => parts.reduce((a, p) => a + (calc(p.amount) || 0), 0);
+      function draw() {
+        box.innerHTML = `
+          <div class="hl"><b>${esc(t.memo || t.category)}</b><b class="num">${won(t.amount)}</b></div>
+          <p class="sub">${esc(t.date)}${t.payment ? ' · ' + esc(t.payment) : ''} · 줄마다 금액과 카테고리를 적어요. 한 줄은 비워 두면 남은 금액으로 채워요.</p>
+          ${parts.map((p, i) => `<div class="split-row">
+            <input class="num" data-sa="${i}" inputmode="text" placeholder="${i === parts.length - 1 ? '남은 금액' : '금액'}" value="${esc(p.amount)}" aria-label="${i + 1}번째 금액">
+            <select data-sc="${i}" aria-label="${i + 1}번째 카테고리">${catSelect(p.category)}</select>
+            <select data-sl="${i}" aria-label="${i + 1}번째 생활비/개인"><option value="0" ${p.personal ? '' : 'selected'}>생활비</option><option value="1" ${p.personal ? 'selected' : ''}>개인</option></select>
+            ${parts.length > 2 ? `<button type="button" class="ghost small" data-sx="${i}" aria-label="${i + 1}번째 줄 빼기">✕</button>` : '<span></span>'}</div>`).join('')}
+          <button type="button" class="small" id="spAdd">+ 한 줄 더</button>
+          <div class="settle-card"><div class="hl"><span id="spLbl"></span><b class="num" id="spRest"></b></div></div>
+          <button class="primary big-btn" id="spSave">나눠서 저장</button>`;
+        rest();
+      }
+      function rest() {
+        const r = t.amount - sumOf(), empty = parts.filter((p) => !String(p.amount).trim()).length;
+        box.querySelector('#spLbl').textContent = r >= 0 ? (empty === 1 && r > 0 ? '빈 칸에 들어갈 남은 금액' : '남은 금액') : '넘친 금액';
+        const el = box.querySelector('#spRest');
+        el.textContent = won(Math.abs(r));
+        el.style.color = r === 0 || (empty === 1 && r > 0) ? 'var(--accent)' : 'var(--danger)';
+      }
+      box.addEventListener('input', (e) => { const i = e.target.dataset.sa; if (i !== undefined) { parts[i].amount = e.target.value; rest(); } });
+      box.addEventListener('change', (e) => {
+        if (e.target.dataset.sc !== undefined) parts[e.target.dataset.sc].category = e.target.value;
+        if (e.target.dataset.sl !== undefined) parts[e.target.dataset.sl].personal = e.target.value === '1';
+      });
+      box.addEventListener('click', async (e) => {
+        const x = e.target.closest('[data-sx]');
+        if (x) { parts.splice(Number(x.dataset.sx), 1); draw(); return; }
+        if (e.target.closest('#spAdd')) { parts.push({ amount: '', category: '', personal: !!t.personal }); draw(); return; }
+        if (!e.target.closest('#spSave')) return;
+        const empties = parts.filter((p) => !String(p.amount).trim());
+        if (empties.length === 1) { const r = t.amount - sumOf(); if (r > 0) empties[0].amount = String(r); }
+        if (parts.some((p) => !calc(p.amount))) { toast('금액이 비어 있거나 숫자가 아닌 줄이 있어요'); draw(); return; }
+        if (parts.some((p) => !p.category)) { toast('줄마다 카테고리를 골라 주세요'); draw(); return; }
+        if (sumOf() !== t.amount) { toast(`합이 ${won(t.amount)}이 되어야 해요 (지금 ${won(sumOf())})`); draw(); return; }
+        const btn = e.target.closest('#spSave'); btn.disabled = true;
+        try {
+          await call('budget.split', t.id, parts.map((p) => ({ amount: calc(p.amount), category: p.category, personal: p.personal })));
+          parts.forEach((p) => countCat(p.category));
+          md.close();
+          toast(`${parts.length}줄로 나눠 저장했어요`);
+          if (onDone) onDone();
+        } catch (err) { fail(err); btn.disabled = false; }
+      });
+      draw();
     }
 
     /* ---------- 생활비 정산 ---------- */
@@ -458,7 +566,7 @@ export default {
         <section class="panel"><h2>카테고리</h2>
           ${Object.keys(groups).map((k) => { const g = groups[k][0]; return `<div class="grp">${esc(g.type === '고정비' ? '고정비' : g.type + ' · ' + g.group)}</div>
             <div class="list">${groups[k].map((c) => `<div class="item"><span class="grow">${esc(c.name)}</span>
-              <button class="small" data-cat-ren="${esc(c.name)}">이름 변경</button><button class="small ghost" data-cat-del="${esc(c.name)}">삭제</button></div>`).join('')}</div>`; }).join('')}
+              <button class="small" data-cat-mv="${esc(c.name)}">옮기기</button><button class="small" data-cat-ren="${esc(c.name)}">이름 변경</button><button class="small ghost" data-cat-del="${esc(c.name)}">삭제</button></div>`).join('')}</div>`; }).join('')}
           <button class="add-btn" id="catAdd">+ 카테고리 추가</button></section>
         <section class="panel"><h2>고정비</h2><p class="sub">결제일이 되면 매달 자동으로 기록돼요. 다른 가족의 개인 고정비는 보이지 않아요.</p>
           <div class="list">${set.fixed.length ? set.fixed.map((f, i) => `<div class="item${f.on ? '' : ' off'}"><div class="grow"><b>${esc(f.name)}</b> <span class="btag">${esc(f.owner === '공통' ? '공통' : who(f.owner))}</span>
@@ -495,6 +603,23 @@ export default {
         const g = md.el.querySelector('#cg').value;
         const [type, group] = g === 'new' ? ['변동비', md.el.querySelector('#ng').value.trim()] : g.split('|');
         try { const d = await call('budget.category', { action: 'add', type, group, name: md.el.querySelector('#cn').value.trim() }); md.close(); afterSet(d, '추가했어요'); } catch (err) { fail(err); }
+      };
+    }
+    function moveCat(name) {
+      const cur = set.categories.find((c) => c.name === name);
+      const groups = [...new Set(set.categories.filter((c) => c.type === cur.type).map((c) => c.group))];
+      const md = modal(`'${name}' 옮기기`, `<form class="stack" id="mf">
+        <label for="mg">어느 대분류로 옮길까요?</label><select id="mg">${groups.map((g) => `<option ${g === cur.group ? 'selected' : ''}>${esc(g)}</option>`).join('')}
+          <option value="__new">+ 새 대분류 만들기</option></select>
+        <div id="mnBox" hidden class="stack"><label for="mn">새 대분류 이름</label><input id="mn" maxlength="30" placeholder="예: 반려동물"></div>
+        <p class="sub">지난 내역도 새 대분류로 묶여요. 금액은 그대로예요.</p><button class="primary">옮기기</button></form>`);
+      md.el.querySelector('#mg').onchange = (e) => { md.el.querySelector('#mnBox').hidden = e.target.value !== '__new'; };
+      md.el.querySelector('#mf').onsubmit = async (e) => {
+        e.preventDefault();
+        const v = md.el.querySelector('#mg').value, group = v === '__new' ? md.el.querySelector('#mn').value.trim() : v;
+        if (!group) { toast('대분류 이름을 적어 주세요'); return; }
+        if (group === cur.group) { md.close(); return; }
+        try { const d = await call('budget.category', { action: 'move', name, group }); md.close(); afterSet(d, `'${group}'(으)로 옮겼어요`); } catch (err) { fail(err); }
       };
     }
     function renameCat(name) {
@@ -587,6 +712,7 @@ export default {
       }
       if (t.closest('#catAdd')) { addCat(); return; }
       const cr = t.closest('[data-cat-ren]'); if (cr) { renameCat(cr.dataset.catRen); return; }
+      const cm = t.closest('[data-cat-mv]'); if (cm) { moveCat(cm.dataset.catMv); return; }
       const cd = t.closest('[data-cat-del]');
       if (cd) { if (!armed(cd, '지난 내역은 미분류로 가요. 삭제할까요?')) return; try { afterSet(await call('budget.category', { action: 'delete', name: cd.dataset.catDel }), '삭제했어요'); } catch (err) { fail(err); } return; }
       const fe = t.closest('[data-fix-edit]'); if (fe) { editFixed(Number(fe.dataset.fixEdit)); }
