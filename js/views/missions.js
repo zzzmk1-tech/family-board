@@ -14,7 +14,14 @@ const STAMP_RULES = [
   '★ "놀기 전에 끝냈어요" 같은 보너스는 그날 기본 미션을 다 했을 때만 도장을 받아요',
   '★ 하루 완료 보너스·주간 보너스는 포인트만 받고 도장은 더 없어요',
   '★ 도장을 모아 갖고 싶은 것을 받아요! 도장판에서 목표를 골라 보세요',
+  '🏆 특별 미션: 문제집 한 권 끝내기처럼 큰 일을 해내면 엄마·아빠가 포인트와 도장을 더 줘요',
 ];
+
+/** 특별 미션 (최근 30일): 엄마·아빠가 넣어 준 것 */
+const specialHtml = (list) => (list && list.length ? `<div class="sec">🏆 특별 미션</div><div class="missions">${list.map((s) => `<div class="mitem approved">
+    <span class="mico" aria-hidden="true">🏆</span>
+    <span class="grow"><span class="mtitle">${esc(s.title)}</span><span class="sub" style="display:block">${esc(s.dateLabel)}${s.stamps ? ` · 도장 +${s.stamps}개` : ''}</span></span>
+    ${s.points ? `<span class="mpts num">+${s.points.toLocaleString()}</span>` : ''}</div>`).join('')}</div>` : '');
 const rulesHtml = (rules) => rules.concat(STAMP_RULES).map((r) => `<li>${esc(r)}</li>`).join('');
 
 /** 미션 화면 위의 도장 한 줄: 누르면 도장판으로 */
@@ -82,11 +89,14 @@ export default {
       const sum = cheer.reduce((a, c) => a + c.points, 0);
       body.innerHTML = `
         ${cheer.length ? `<div class="celebrate"><div class="ct">🎉 엄마가 확인했어요!</div>
-          ${cheer.map((c) => `<div>${esc(c.title)} <b>+${c.points}</b></div>`).join('')}<div class="cs">모두 +${sum}점. 잘했어요!</div></div>` : ''}
+          ${cheer.map((c) => (c.special
+            ? `<div>🏆 특별 미션 · ${esc(c.title)}${c.points ? ` <b>+${c.points}</b>` : ''}${c.stamps ? ` · 도장 <b>${c.stamps}개</b>` : ''}</div>`
+            : `<div>${esc(c.title)} <b>+${c.points}</b></div>`)).join('')}<div class="cs">모두 +${sum}점. 잘했어요!</div></div>` : ''}
         ${waiting ? `<div class="hint">⏳ 엄마 확인을 기다리는 미션 ${waiting}개. 확인되면 포인트가 들어와요.</div>` : ''}
         ${!d.items.length ? '<div class="rest"><div class="big">😴</div>오늘은 쉬는 날이에요. 푹 쉬어요!</div>' : ''}
         ${must.length ? `<div class="sec">오늘 꼭 할 미션</div><div class="missions">${must.map(itemHtml).join('')}</div>` : ''}
         ${more.length ? `<div class="sec">더 하면 포인트 UP</div><div class="missions">${more.map(itemHtml).join('')}</div>` : ''}
+        ${specialHtml(d.special)}
         <details class="guide"><summary>💡 포인트·도장 받는 방법</summary><ul class="rules">${rulesHtml(d.rules)}</ul></details>`;
     }
 

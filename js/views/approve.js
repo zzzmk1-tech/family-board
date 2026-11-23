@@ -72,6 +72,10 @@ export default {
         </div>
         <div class="missions">${k.items.length ? k.items.map((m) => rowHtml(k.kidId, parent.date, m)).join('') : '<div class="empty">오늘은 미션이 없어요.</div>'}</div>
         ${k.past.length ? `<h3>지난 날 확인 안 한 미션</h3><div class="missions">${k.past.map((m) => rowHtml(k.kidId, m.date, { ...m, state: 'pending', kind: '' }, m.dateLabel)).join('')}</div>` : ''}
+        ${(k.special || []).length ? `<h3>🏆 특별 미션 <span class="sub">(최근 30일)</span></h3><div class="list">${k.special.map((s) => `<div class="item">
+            <div class="grow"><b>${esc(s.title)}</b><br><span class="sub">${esc(s.dateLabel)}${s.points ? ` · +${s.points.toLocaleString()}` : ''}${s.stamps ? ` · 도장 ${s.stamps}개` : ''}</span></div>
+            ${s.paid ? '<span class="sub">지급됨</span>' : `<button class="small ghost" data-spdel="${esc(s.id)}">지우기</button>`}</div>`).join('')}</div>` : ''}
+        <button class="add-btn" data-special="${esc(k.kidId)}">🏆 특별 미션 넣기</button>
       </section>`).join('') || '<div class="empty">아이로 등록된 가족이 없어요. 설정에서 가족을 추가해 주세요.</div>';
     }
 
@@ -164,6 +168,41 @@ export default {
         try { await act(b.dataset.kid, b.dataset.date, b.dataset.mid, b.dataset.act); await show(); if (tab === 'check') drawCheck(); } catch (err) { fail(err); b.disabled = false; }
       };
       show();
+    }
+
+    /** 특별 미션 넣기: 매일 미션과 상관없이 큰 일을 해냈을 때 (문제집 한 권 끝 등). 넣으면 바로 포인트·도장 */
+    function specialModal(kidId) {
+      const kid = personById(kidId);
+      const today = dayKey();
+      const dates = Array.from({ length: 8 }, (_, i) => addDays(today, -i));
+      let date = today;
+      const md = modal(`${kid ? kid.name : ''} 특별 미션 넣기`, `<form class="stack" id="spForm">
+        <p class="sub">매일 미션과 상관없이 큰 일을 해냈을 때 넣어 주세요. 넣으면 바로 포인트와 도장이 들어가고 아이에게 알림이 가요.</p>
+        <label for="spTitle">무엇을 해냈나요?</label><input id="spTitle" maxlength="40" required placeholder="예: 연산 문제집 한 권 끝!">
+        <div class="grid2">
+          <label>포인트<input type="number" id="spPts" min="0" step="10" inputmode="numeric" placeholder="예: 500"></label>
+          <label>도장<input type="number" id="spSt" min="0" max="100" inputmode="numeric" value="5"></label>
+        </div>
+        <span class="label">언제 해냈나요?</span>
+        <div class="chips" id="spD">${dates.map((d) => `<button type="button" data-d="${d}" class="${d === date ? 'on' : ''}">${d === today ? '오늘' : esc(koDate(d))}</button>`).join('')}</div>
+        <button class="primary">넣기</button></form>`);
+      const f = md.el;
+      f.querySelector('#spD').onclick = (e) => {
+        const b = e.target.closest('[data-d]'); if (!b) return;
+        date = b.dataset.d;
+        f.querySelectorAll('#spD [data-d]').forEach((x) => x.classList.toggle('on', x === b));
+      };
+      f.querySelector('#spForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = f.querySelector('#spForm .primary');
+        btn.disabled = true;
+        try {
+          const p = await call('missions.special', kidId, date, f.querySelector('#spTitle').value, Number(f.querySelector('#spPts').value) || 0, Number(f.querySelector('#spSt').value) || 0);
+          setParent(p); week = null; md.close();
+          if (tab === 'check') drawCheck();
+          toast('특별 미션을 넣었어요! 🏆');
+        } catch (err) { fail(err); btn.disabled = false; }
+      };
     }
 
     /* ---------- 이번 주 ---------- */
@@ -285,6 +324,14 @@ export default {
         return;
       }
       const past = t.closest('[data-past]'); if (past) return pastModal(past.dataset.past);
+      const spn = t.closest('[data-special]'); if (spn) return specialModal(spn.dataset.special);
+      const spd = t.closest('[data-spdel]');
+      if (spd) {
+        if (!armed(spd, '포인트·도장도 빠져요. 지울까요?')) return;
+        spd.disabled = true;
+        try { setParent(await call('missions.removeSpecial', spd.dataset.spdel)); week = null; drawCheck(); toast('지웠어요'); } catch (err) { fail(err); spd.disabled = false; }
+        return;
+      }
       const wk = t.closest('[data-wk]');
       if (wk) { weekOffset = wk.dataset.wk === '0' ? 0 : weekOffset + Number(wk.dataset.wk); loadWeek(); return; }
       const nd = t.closest('[data-newdef]'); if (nd) return defModal({ kidId: nd.dataset.newdef, dows: [1, 2, 3, 4, 5] });
