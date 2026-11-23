@@ -445,6 +445,11 @@ button.mitem:active { transform: scale(.98); }
 .settle-due { font-size: 22px; color: var(--accent); }
 .btag.ok { background: var(--accent); color: #fff; }
 p.warn { color: var(--danger); }
+.cat-groups { margin-top: 2px; }
+.cat-groups .grp-btn { background: var(--surface2); border-radius: 10px; font-size: 13px; padding: 6px 10px; }
+.cat-groups .grp-btn.on { background: var(--accent-soft); color: var(--accent); }
+.split-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 76px 26px; gap: 6px; align-items: center; }
+.split-row input, .split-row select { width: 100%; min-width: 0; font-size: 14px; padding-left: 8px; padding-right: 4px; }
 .tablewrap { overflow-x: auto; }
 .btable { width: 100%; border-collapse: collapse; font-size: 14px; }
 .btable td { padding: 7px 4px; border-bottom: 1px solid var(--line); }
