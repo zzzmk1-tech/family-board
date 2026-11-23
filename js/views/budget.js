@@ -235,10 +235,14 @@ export default {
         <input class="amount num" id="fAmount" inputmode="text" autocomplete="off" placeholder="0" value="${esc(tx.amount ?? '')}">
         <div class="preview num" id="fPreview"></div>
         <label for="fMemo">내용 <span class="sub">(가게 이름을 맨 앞에. 예: 이마트 장보기)</span></label><input id="fMemo" maxlength="60" placeholder="예: 이마트, 소율 수학학원" value="${esc(tx.memo || '')}">
-        <span class="label">카테고리 <span class="sub" id="fCatHint">· 자주 쓰는 것</span></span>
-        <div class="chips" id="fFav"></div>
-        <div class="chips cat-groups" id="fGroups"></div>
-        <div class="chips" id="fSub"></div>
+        <span class="label">카테고리 <span class="sub" id="fCatHint"></span></span>
+        <div class="cat-pick">
+          <div class="cat-cap">⭐ 자주 쓰는 것</div>
+          <div class="chips" id="fFav"></div>
+          <div class="cat-cap cat-cap-all">📂 전체 카테고리 <span>대분류를 누르면 펼쳐져요</span></div>
+          <div class="cat-groups" id="fGroups"></div>
+          <div class="chips cat-sub" id="fSub"></div>
+        </div>
         <label for="fDate">날짜</label><input type="date" id="fDate" value="${esc(tx.date || dayKey())}">
         <span class="label">결제수단</span>
         <div class="chips">${init.payments.map((p) => `<button type="button" data-pay="${esc(p)}" class="${lastPay === p ? 'on' : ''}">${esc(p)}</button>`).join('')}</div>
@@ -263,7 +267,7 @@ export default {
       function drawCats() {
         const chip = (n) => `<button type="button" data-cat="${esc(n)}" class="${n === sel ? 'on' : ''}">${esc(n)}</button>`;
         box.querySelector('#fFav').innerHTML = favCats(sel).map(chip).join('');
-        box.querySelector('#fGroups').innerHTML = catGroups().map((g) => `<button type="button" class="grp-btn${g.name === open ? ' on' : ''}" data-grp="${esc(g.name)}">${esc(g.name)} ${g.name === open ? '▴' : '▾'}</button>`).join('');
+        box.querySelector('#fGroups').innerHTML = catGroups().map((g) => `<button type="button" class="grp-btn${g.name === open ? ' on' : ''}${g.items.includes(sel) ? ' has' : ''}" data-grp="${esc(g.name)}"><span>${esc(g.name)}</span><i>${g.name === open ? '▴' : '▾'}</i></button>`).join('');
         const g = catGroups().find((x) => x.name === open);
         box.querySelector('#fSub').innerHTML = g ? g.items.map(chip).join('') : '';
       }
@@ -278,7 +282,7 @@ export default {
         if (gb) { open = open === gb.dataset.grp ? '' : gb.dataset.grp; drawCats(); return; }
         const b = e.target.closest('[data-cat],[data-pay],[data-life]');
         if (!b) return;
-        if (b.dataset.cat !== undefined) { sel = b.dataset.cat; manual = true; open = ''; hint.textContent = '· 자주 쓰는 것'; drawCats(); return; }
+        if (b.dataset.cat !== undefined) { sel = b.dataset.cat; manual = true; open = ''; hint.textContent = `· ${sel}`; drawCats(); return; }
         const kind = b.dataset.pay !== undefined ? 'pay' : 'life';
         box.querySelectorAll(`[data-${kind}]`).forEach((x) => x.classList.toggle('on', x === b));
         if (kind === 'life') box.querySelector('#fLifeMsg').textContent = b.dataset.life === '1' ? '내 개인 지출이에요. 정산에서 빠져요.' : '생활비예요. 정산에 들어가요.';
