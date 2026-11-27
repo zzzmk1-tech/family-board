@@ -435,6 +435,8 @@ button.mitem:active { transform: scale(.98); }
 .tx.hiddenrow { opacity: .85; }
 .btag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-left: 4px; }
 .btag.warn { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+/* 개인 지출(생활비 정산에서 빠짐)은 주황으로 눈에 띄게 */
+.btag.personal { background: var(--wait-soft); color: var(--wait-ink); border: 1px solid var(--wait); font-weight: 700; }
 .hrow { display: grid; gap: 4px; }
 .hl { display: flex; justify-content: space-between; font-size: 14px; }
 .hbar { height: 8px; border-radius: 4px; background: var(--surface2); overflow: hidden; }
