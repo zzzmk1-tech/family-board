@@ -355,7 +355,7 @@ export default {
         rows += `<button class="tx" data-tx="${esc(t.id)}"><div class="grow"><div class="m">${esc(t.memo || t.category)}</div>
           <div class="c">${esc(t.category)}${t.payment ? ' · ' + esc(t.payment) : ''}${t.member ? ' · ' + esc(who(t.member)) : ''}
           ${t.source === '자동' ? '<span class="btag">자동</span>' : ''}${t.source === '고정비' ? '<span class="btag">고정비</span>' : ''}${t.source === '가져오기' ? '<span class="btag">엑셀</span>' : ''}
-          ${t.category === '미분류' ? '<span class="btag warn">분류 필요</span>' : ''}${t.personal ? '<span class="btag">개인</span>' : ''}${t.splitId ? '<span class="btag">나눔</span>' : ''}</div></div><div class="a num">${won(t.amount)}</div></button>`;
+          ${t.category === '미분류' ? '<span class="btag warn">분류 필요</span>' : ''}${t.personal ? '<span class="btag personal">개인</span>' : ''}${t.splitId ? '<span class="btag">나눔</span>' : ''}</div></div><div class="a num">${won(t.amount)}</div></button>`;
       });
       body.innerHTML = `${monthBar()}
         <div class="stat"><b class="num">${won(total)}</b><span class="sub">${items.length}건${unc ? ` · 분류가 필요한 내역 ${unc}건` : ''}</span></div>
