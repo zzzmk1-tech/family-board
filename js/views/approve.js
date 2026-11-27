@@ -4,7 +4,7 @@ import { call, peek } from '../api.js';
 import { state, emit, personById } from '../state.js';
 import { esc, avatar, modal, armed, toast, fail, dayKey, addDays, koDate } from '../ui.js';
 import { icon } from '../icons.js';
-import { KIND_LABEL } from './missions.js';
+import { KIND_LABEL, partsText } from './missions.js';
 
 const DAYS = ['', '월', '화', '수', '목', '금', '토', '일'];
 
@@ -70,6 +70,7 @@ export default {
           <div class="stat"><span class="sub">이번 달</span><b class="num">${k.monthPoints.toLocaleString()}</b></div>
           <div class="stat"><span class="sub">미지급 포인트</span><b class="num">${k.unpaid.toLocaleString()}</b></div>
         </div>
+        ${partsText(k.todayParts, true) ? `<p class="sub" style="margin:4px 2px 8px">오늘: ${esc(partsText(k.todayParts, true))}</p>` : ''}
         <div class="missions">${k.items.length ? k.items.map((m) => rowHtml(k.kidId, parent.date, m)).join('') : '<div class="empty">오늘은 미션이 없어요.</div>'}</div>
         ${k.past.length ? `<h3>지난 날 확인 안 한 미션</h3><div class="missions">${k.past.map((m) => rowHtml(k.kidId, m.date, { ...m, state: 'pending', kind: '' }, m.dateLabel)).join('')}</div>` : ''}
         ${(k.special || []).length ? `<h3>🏆 특별 미션 <span class="sub">(최근 30일)</span></h3><div class="list">${k.special.map((s) => `<div class="item">

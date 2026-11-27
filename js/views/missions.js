@@ -17,6 +17,20 @@ const STAMP_RULES = [
   '🏆 특별 미션: 문제집 한 권 끝내기처럼 큰 일을 해내면 엄마·아빠가 포인트와 도장을 더 줘요',
 ];
 
+/**
+ * 오늘 포인트를 나눠서 한 줄로 (서버 todayParts). parent: 엄마·아빠 화면 말투("+60"), 아니면 아이 화면("60")
+ * 예) 미션 +120 · 놀기 전 보너스 +60 · 하루 완료 +60 · 주간 보너스 +800 🎉
+ */
+export function partsText(p, parent) {
+  if (!p || !p.total) return '';
+  const n = (v) => (parent ? '+' : '') + v.toLocaleString();
+  const list = [
+    [p.mission, '미션'], [p.early, parent ? '놀기 전 보너스' : '보너스'], [p.special, '특별'],
+    [p.day, '하루 완료'], [p.week, parent ? '주간 보너스' : '주간'],
+  ].filter(([v]) => v > 0).map(([v, t]) => `${t} ${n(v)}`);
+  return list.join(' · ') + (p.week ? ' 🎉' : '');
+}
+
 /** 특별 미션 (최근 30일): 엄마·아빠가 넣어 준 것 */
 const specialHtml = (list) => (list && list.length ? `<div class="sec">🏆 특별 미션</div><div class="missions">${list.map((s) => `<div class="mitem approved">
     <span class="mico" aria-hidden="true">🏆</span>
@@ -67,7 +81,8 @@ export default {
       const pct = d.coreTotal ? Math.round((done / d.coreTotal) * 100) : 100;
       const label = !d.coreTotal ? '오늘은 쉬는 날' : done === d.coreTotal ? '기본 미션 끝! 최고야 🎉' : `기본 미션 ${done} / ${d.coreTotal}`;
       top.innerHTML = `<div class="view-body">${heroHtml({ person: state.me, hello: `안녕, ${d.name}!`, title: `${d.name}의 오늘 미션`, progress: { label, pct } })}
-        <div class="stats"><div class="stat"><b class="num">${d.todayPoints.toLocaleString()}</b><span class="sub">오늘 받은 포인트</span></div>
+        <div class="stats"><div class="stat"><b class="num">${d.todayPoints.toLocaleString()}</b><span class="sub">오늘 받은 포인트</span>
+            ${partsText(d.todayParts) ? `<span class="sub" style="font-size:12px;line-height:1.4">${esc(partsText(d.todayParts))}</span>` : ''}</div>
           <div class="stat"><b class="num">${d.monthPoints.toLocaleString()}</b><span class="sub">이번 달</span></div></div>
         ${d.stamp ? stampStripHtml(d.stamp) : ''}</div>`;
     }
@@ -91,6 +106,7 @@ export default {
         ${cheer.length ? `<div class="celebrate"><div class="ct">🎉 엄마가 확인했어요!</div>
           ${cheer.map((c) => (c.special
             ? `<div>🏆 특별 미션 · ${esc(c.title)}${c.points ? ` <b>+${c.points}</b>` : ''}${c.stamps ? ` · 도장 <b>${c.stamps}개</b>` : ''}</div>`
+            : c.bonus ? `<div>${c.week ? '🏆' : '⭐'} ${esc(c.title)} <b>+${c.points}</b></div>`
             : `<div>${esc(c.title)} <b>+${c.points}</b></div>`)).join('')}<div class="cs">모두 +${sum}점. 잘했어요!</div></div>` : ''}
         ${waiting ? `<div class="hint">⏳ 엄마 확인을 기다리는 미션 ${waiting}개. 확인되면 포인트가 들어와요.</div>` : ''}
         ${!d.items.length ? '<div class="rest"><div class="big">😴</div>오늘은 쉬는 날이에요. 푹 쉬어요!</div>' : ''}
